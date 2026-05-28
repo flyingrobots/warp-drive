@@ -1,0 +1,53 @@
+# Rust
+/target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Build artifacts
+/dist/
+/out/
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.AppleDouble
+.LSOverride
+Icon
+
+# Xcode / macOS developer tools
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+
+# Obsidian
+.obsidian/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.fleet/
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+*.cert
+
+# Logs
+*.log
+logs/
+
+# Claude Code
+.claude/
+
+# Misc
+*.orig
+*.rej
