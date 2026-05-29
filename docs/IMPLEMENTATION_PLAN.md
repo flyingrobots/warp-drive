@@ -181,10 +181,11 @@ input FsProposeContentIntentInput {
 
 input FsCreateNodeInput {
     parentSiteId: ID!
+    parentBasisHash: String!   # basis of the parent directory at observe time
     name: String!
     kind: FsNodeKind!
     mode: Int!
-    initialBytes: String   # for FILE
+    initialBytes: String       # for FILE
 }
 
 input FsRenameNodeInput {
@@ -204,8 +205,33 @@ type Query {
         @wes_op(name: "fsObserveNode")
     fsReadProjection(input: FsReadProjectionInput!): FsContentProjection!
         @wes_op(name: "fsReadProjection")
+    """
+    Convenience operation: semantically an observe call with a directory
+    aperture. Not a directory-tree primitive — the runtime projects
+    membership; the membrane owns path translation.
+    """
     fsListDirectory(input: FsListDirectoryInput!): FsDirectoryReading!
         @wes_op(name: "fsListDirectory")
+}
+
+enum FsObstructionReason {
+    STALE_BASIS
+    CONCURRENT_CONFLICT
+    DEFERRED_ADMISSION
+    POLICY_DENIAL
+    BUDGET_EXHAUSTED
+    MISSING_EVIDENCE
+    COORDINATE_GONE
+    NOT_IMPLEMENTED
+    NO_SUCH_SITE
+    INVALID_DELTA
+}
+
+enum IntentOutcome {
+    ADMITTED
+    OBSTRUCTED
+    DEFERRED
+    DENIED
 }
 
 """
@@ -215,17 +241,10 @@ and recovery hint — same shape as a receipt in /.warp/intents/<id>.
 """
 type FsIntentReceipt {
     intentId: ID!
-    outcome: IntentOutcome!   # ADMITTED | OBSTRUCTED | DEFERRED | DENIED
-    reason: String            # typed obstruction reason if not ADMITTED
-    newProjection: FsContentProjection  # populated on ADMITTED
-    recovery: String          # recovery hint
-}
-
-enum IntentOutcome {
-    ADMITTED
-    OBSTRUCTED
-    DEFERRED
-    DENIED
+    outcome: IntentOutcome!
+    reason: FsObstructionReason  # present when outcome != ADMITTED
+    newProjection: FsContentProjection  # populated when outcome == ADMITTED
+    recovery: String             # recovery hint
 }
 
 type Mutation {
@@ -278,6 +297,7 @@ erDiagram
     }
     FsCreateNodeInput {
         ID parentSiteId FK
+        String parentBasisHash
         String name
         FsNodeKind kind
         Int mode
@@ -886,9 +906,10 @@ Goal: full read+write cycle, basis-staleness handled correctly.
 - W2.M2 (write handlers), W2.M3 (advance subscription)
 - W3.M2 (writes)
 
-Shipping value: real development against a WARP DRIVE mount.
-`git clone` into it (works), `npm install` (works), edit a file
-(works), break the basis on purpose (handled honestly).
+Shipping value: real editing against a WARP DRIVE mount.
+`vim` writes work, `cp` works, stale-basis obstruction works.
+Package-manager and `git clone` compatibility begins here but is not
+declared supported until G6 verifies create/unlink/rename behavior.
 
 ### 6.4 M3 — "Coordinate it" (1-2 weeks after M2)
 
@@ -1319,7 +1340,6 @@ committed subset by release. v0.0.1 is read-only. Writes ship with v0.1.
 | `unlink` | G6 | |
 | `rename` | G6 | `EOPNOTSUPP` if runtime lacks atomic multi-site admission |
 | `chmod`, `chown` | G6 | where runtime allows |
-| `chmod`, `chown` | G6 | |
 
 **Unsupported by design (all versions):**
 
@@ -1444,6 +1464,43 @@ The full diagnostic surface targeted for G3+:
 `/.warp/stats` is the observable heartbeat. If WARP DRIVE feels slow
 and you cannot explain why, `watch cat /.warp/stats` should give an
 answer within 30 seconds.
+
+### 11.6 Golden fake-tree fixture
+
+The in-memory driver at G1 must expose exactly this tree. It is not a
+demo — it is a contract. Every FUSE operation and `.warp/` path listed
+here must work before Echo enters the room.
+
+```text
+/
+  README.md         # non-empty text file
+  package.json      # non-empty JSON
+  src/
+    main.ts         # non-empty text file
+    lib.ts          # non-empty text file
+  empty/            # empty directory
+  links/
+    readme -> ../README.md    # relative symlink
+/.warp/coordinate
+/.warp/runtime
+/.warp/stats
+```
+
+Required commands and their expected outcomes at G1:
+
+| Command | Expected |
+|---|---|
+| `ls -la` | lists root entries with correct types |
+| `find .` | walks entire tree without error |
+| `tree` | renders nested structure |
+| `cat README.md` | prints file contents |
+| `rg "export"` | finds matches in `src/` files |
+| `stat src/main.ts` | returns size, mode, mtime |
+| `readlink links/readme` | returns `../README.md` |
+| `cat /.warp/coordinate` | non-empty, no error |
+| `cat /.warp/stats` | shows counter output |
+
+If any of these fail, G1 is not done. No gate advances until all pass.
 
 ---
 
