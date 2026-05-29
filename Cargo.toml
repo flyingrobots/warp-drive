@@ -12,8 +12,9 @@ repository  = "https://github.com/flyingrobots/warp-drive"
 rust-version = "1.90.0"
 edition     = "2024"
 
-# Path dependencies into the echo workspace (sibling repo).
-# These will become version dependencies once echo publishes to crates.io.
+# Path dependencies into the echo worktree (feat/warp-drive-g1).
+# Uses ../echo-warp-drive so WARP DRIVE work is isolated from other agents
+# on the main ../echo checkout. These become version deps once echo publishes.
 [workspace.dependencies]
-echo-wasm-abi = { path = "../echo/crates/echo-wasm-abi" }
-warp-wasm     = { path = "../echo/crates/warp-wasm" }
+echo-wasm-abi = { path = "../echo-warp-drive/crates/echo-wasm-abi" }
+warp-wasm     = { path = "../echo-warp-drive/crates/warp-wasm" }

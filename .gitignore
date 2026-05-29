@@ -1,6 +1,8 @@
 # Rust
 /target/
-Cargo.lock
+# Cargo.lock is intentionally committed for this binary workspace.
+# It pins the exact Echo crate versions used at each gate and makes
+# the spike reproducible outside this dev environment.
 **/*.rs.bk
 *.pdb
 
