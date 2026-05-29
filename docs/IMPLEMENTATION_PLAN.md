@@ -432,11 +432,10 @@ some new things and some things made more general:
   `crates/echo-app-core` or a new `crates/echo-fs-runtime` crate.
 - **Frontier-advance event subscription.** Echo's scheduler has
   `RunCompletion` events but no general subscription. Needs adding.
-- **An embeddable entry point.** WARP DRIVE wants to load Echo as a
-  library inside the FUSE binary. Today `warp-wasm` is built for use
-  inside a wasm host; using it from another Rust binary requires
-  picking a wasm runtime (`wasmtime` is the obvious choice) and
-  packaging the init/load sequence as a small library.
+- **An embeddable entry point.** ✅ **Done at G0.** `warp-wasm` embeds
+  as a native Rust rlib. `init_embedded()` initializes the engine kernel;
+  `observe_cbor()` round-trips observe requests. No wasm runtime host
+  needed.
 - **Lane enumeration.** Echo has worldlines; "lanes" as named
   collections of worldlines aren't explicit. The membrane needs to ask
   "what lanes do you expose?" and get back a list.
@@ -518,25 +517,35 @@ Scope: ~600-900 lines including tests. The subscription bookkeeping is
 finicky (subscriptions are per-mount, per-coordinate; they need to
 survive scheduler restarts; they need GC when the host disconnects).
 
-#### 4.2.3 Embeddable entry point
+#### 4.2.3 Embeddable entry point ✅ Done at G0
 
-A new tiny crate that bundles "load `warp-wasm` inside a wasmtime host
-and expose a `KernelPort`-equivalent surface to Rust callers":
+`warp-wasm` links directly as a native Rust rlib — no wasm runtime host
+required. The two entry points proved in the G0 spike:
+
+```rust
+// Creates and installs the engine kernel; returns worldline id + initial head.
+pub fn init_embedded() -> InitResult;
+
+// Round-trips an ObservationRequest encoded as CBOR bytes.
+pub fn observe_cbor(request_bytes: &[u8]) -> Vec<u8>;
+```
+
+A thin `echo-embeddable` wrapper exposes a `KernelPort`-compatible
+surface to the rest of the FUSE binary:
 
 ```text
 crates/echo-embeddable/
 ├── Cargo.toml
 ├── src/
 │   ├── lib.rs
-│   ├── instance.rs       # wasmtime instance management
-│   ├── client.rs         # Rust-native API mirroring KernelPort
-│   └── lifecycle.rs      # init / bootstrap / shutdown
+│   ├── client.rs         # KernelPort impl over rlib calls
+│   └── lifecycle.rs      # init / shutdown
 └── tests/
     └── load_and_observe.rs
 ```
 
 ```rust
-pub struct EmbeddedEcho { /* wasmtime instance */ }
+pub struct EmbeddedEcho { /* rlib state handle */ }
 
 impl EmbeddedEcho {
     pub fn new(config: EmbeddedEchoConfig) -> Result<Self, EmbedError>;
@@ -548,13 +557,11 @@ impl EmbeddedEcho {
 }
 ```
 
-The methods mirror `KernelPort` but operate on owned Rust types, hiding
-the wasm boundary. Internally, each call serializes to LE binary EINT,
-invokes the wasm export, and deserializes the response.
+Each call serializes to CBOR, invokes the rlib function, and deserializes.
+No serialization round-trip across a wasm boundary; no host shim layer.
 
-Scope: ~500-800 lines. wasmtime integration is well-trodden; the
-trickiest part is lifecycle (kernel init, bootstrap, capability loading,
-graceful shutdown).
+Scope: ~300-400 lines — substantially simpler than the wasmtime approach
+originally scoped.
 
 ```mermaid
 classDiagram
@@ -569,7 +576,6 @@ classDiagram
     }
     class EmbeddedEcho {
         <<crate: echo-embeddable — NEW>>
-        -Instance wasmtime_instance
         +new(config) EmbeddedEcho
         +dispatch_intent(bytes) bytes
         +observe(ObservationRequest) Hologram
@@ -629,7 +635,7 @@ Scope: ~300 lines.
 |---|---|
 | Filesystem contract handlers | ~3000 lines, ~1.5 weeks |
 | Frontier-advance subscription | ~800 lines, ~3-4 days |
-| Embeddable entry point | ~700 lines, ~3 days |
+| Embeddable entry point | ✅ ~300 lines (rlib wrapper, G0 done) |
 | Lane enumeration | ~300 lines, ~1 day |
 | **Total** | **~3 weeks** for one person |
 
@@ -871,10 +877,10 @@ Goal: answer the load-bearing unknowns before any protocol ceremony begins.
 - Crate and repo naming locked
 - README states experimental status
 
-**G0 — embedding spike:**
-- warp-wasm loads through wasmtime in a Rust binary
-- One real `observe` call round-trips
-- If this fails: pivot immediately to Unix socket daemon path
+**G0 — embedding spike:** ✅ DONE
+- `warp-wasm` embeds as a native Rust rlib — no wasm runtime needed
+- `init_embedded()` + `observe_cbor()` round-trip from outside the echo workspace
+- See `docs/gates/G0.md` for the full finding
 
 **G1 — in-memory FUSE fake tree:**
 - Cargo workspace scaffolded with empty crates
@@ -1031,18 +1037,20 @@ the test surface is largest.
 
 The honest list.
 
-### 8.1 Echo isn't ready to be embedded
+### 8.1 ~~Echo isn't ready to be embedded~~ — RESOLVED at G0
 
-The biggest unknown. `warp-wasm` is built for jedit-in-browser. Loading
-it in a non-jedit Rust binary via wasmtime is in principle fine, but
-nobody has done it. Likely surprises: capability bootstrap, kernel
-init sequence, error propagation across the wasm boundary, scheduler
-lifecycle (does run-until-idle even work from a non-host caller?).
+**Finding (G0, 2026-05-29):** `warp-wasm` embeds cleanly as an rlib.
+`init_embedded()` creates and installs the engine kernel; `observe_cbor()`
+round-trips from a separate Rust workspace. Capability bootstrap, kernel
+init, and error propagation all work. `run-until-idle` works through
+`dispatch_control_intent_trusted_cbor`.
 
-Mitigation: W2.M4 is "make it possible to call observe from outside
-jedit" — it's the load-bearing experiment. If it doesn't work, the
-fallback is a Unix socket daemon, which adds a process boundary but
-sidesteps the embedding problem.
+The wasm32 artifact uses wasm-bindgen ABI and is not directly loadable
+by plain wasmtime without host shims. That is not the v0.0.1 embedding
+path — the rlib is. wasmtime becomes relevant only if runtime-swappable
+substrates are needed post-v0.1.
+
+The Unix socket daemon fallback is not needed for v0.0.1.
 
 ### 8.2 Filesystem semantics that don't translate
 
@@ -1057,13 +1065,18 @@ which ones don't.
 
 ### 8.3 Performance is too slow to use
 
-FUSE is slow. Wasmtime has overhead. A naïve cache implementation
-might make every `stat` cycle 50x slower than ext4. If `vim` takes 2
-seconds to open a file, nobody uses the mount.
+FUSE is slow. A naïve cache implementation might make every `stat`
+cycle 50x slower than ext4. If `vim` takes 2 seconds to open a file,
+nobody uses the mount.
+
+The read-path overhead for v0.0.1 is: native Rust call + CBOR
+encode/decode + kernel execution. No wasmtime boundary. This is a
+better performance story than the plan originally assumed.
 
 Mitigation: measure early, at M1. If stat cycles are >5ms, profile
 and fix before claiming M1 done. Cache warm-paths aggressively. If
-the embedded path is too slow, a daemon with batched calls can help.
+the native embedded path is too slow, a daemon with shared kernel
+state and batched calls can help — but do not build it speculatively.
 
 ### 8.4 The filesystem contract is wrong
 
@@ -1248,7 +1261,7 @@ condition is demonstrably true.
 
 | Gate | Condition | Why it comes first |
 |---|---|---|
-| **G0** | wasmtime loads warp-wasm; one `observe` round-trips | The whole embedded path depends on this. If it fails, pivot to daemon. |
+| **G0** | ✅ Native Rust binary links warp-wasm as an rlib; `init_embedded()` initializes the engine kernel; one `observe_cbor()` round-trips from outside the echo workspace | **DONE.** rlib embedding is the correct v0.0.1 surface. The wasm32 artifact uses wasm-bindgen ABI and is not directly loadable by plain wasmtime without host shims — that is not the embedding path for v0.0.1. |
 | **G1** | In-memory FUSE mount: `ls`, `cat`, `rg` on a fake hardcoded tree | Proves POSIX translation, inode strategy, `.warp/` surface — without Echo's complexity. |
 | **G2** | Echo read-only mount: real coordinate, real `observe` | Proves membrane + Echo integration end-to-end. |
 | **G3** | `.warp/` diagnostics + perf counters readable | Without diagnostics, every bug is a haunted filesystem. |
@@ -1260,7 +1273,7 @@ condition is demonstrably true.
 
 ```mermaid
 flowchart TD
-    G0["G0: warp-wasm embeds<br />and observes once"]
+    G0["✅ G0: rlib embedding<br />init_embedded + observe_cbor"]
     G1["G1: In-memory FUSE<br />read-only fake tree"]
     G2["G2: Echo FUSE<br />read-only real coordinate"]
     G3["G3: .warp/ diagnostics<br />+ perf counters"]
@@ -1280,10 +1293,16 @@ flowchart TD
     G7 --> G8
 ```
 
-**G0 is the dragon.** If warp-wasm cannot be loaded through wasmtime
-and asked to perform one real `observe`, the entire embedded path
-pivots to a Unix socket daemon. The daemon works; it adds ~1.5 weeks.
-But do not invest in W1/W2 schema work before G0 is answered.
+**G0 is done.** The wasm32-unknown-unknown build of `warp-wasm` uses
+wasm-bindgen ABI and is not directly loadable by plain wasmtime without
+providing wasm-bindgen host shims — that is not a failure, just the
+wrong artifact for the embedded use case. The rlib path works cleanly:
+`init_embedded()` creates a `WarpKernel`, installs it, and returns the
+default worldline id and initial head. `observe_cbor()` round-trips
+from a separate Rust workspace with a 254-byte CBOR request and a
+valid `OkEnvelope<ObservationArtifact>` response.
+
+See `docs/gates/G0.md` for the full finding.
 
 **G1 gives you stable tests before Echo enters the room.** A fake
 in-memory runtime with three hardcoded files proves the POSIX
@@ -1385,8 +1404,8 @@ Legend: 🎯 target (must work at this gate), ✅ verified, ❌ not supported by
 
 #### MUST
 
-- **Spike G0 before anything else.** No schema work, no protocol polish
-  until warp-wasm loads through wasmtime and observes once.
+- ~~**Spike G0 before anything else.**~~ **G0 is done** — see
+  `docs/gates/G0.md`. rlib embedding works. Proceed to G1.
 - **Build the in-memory driver at G1, not G8.** Deterministic tests,
   isolation from Echo readiness, proof that the driver trait is real.
 - **Define inode stability as law.** See §11.2.1.
@@ -1517,8 +1536,6 @@ how fast the basis-discipline handlers get tested. If the answer is
 no, the plan reshapes around an Echo daemon, which adds 1-2 weeks but
 doesn't kill the project.
 
-Recommended first move: **spike W2.M4 before committing to anything
-else.** A 2-3 day prototype that loads warp-wasm in a Rust binary
-via wasmtime and round-trips a single `observe` call. If it works,
-build out the rest with confidence. If it doesn't, regroup around
-the daemon path.
+~~Recommended first move: spike W2.M4 before committing to anything
+else.~~ **G0 is done** — rlib embedding works cleanly. Build out the
+rest with confidence. See `docs/gates/G0.md`.
