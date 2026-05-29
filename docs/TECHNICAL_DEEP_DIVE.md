@@ -898,6 +898,70 @@ useless "save failed."
 Tools that don't care just see `EBUSY` and move on. The user can still
 inspect `/.warp/intents/last` manually.
 
+### 8.2.1 Receipt examples for all obstruction types
+
+Every obstruction type produces a typed receipt. If receipts are a
+product surface they deserve canonical examples.
+
+**POLICY_DENIAL** — capability insufficient for this operation:
+```json
+{
+  "id": "01HZX2J7P3KQE6V9NHTW4M5RBB",
+  "outcome": "DENIED",
+  "reason": "POLICY_DENIAL",
+  "optic": "posix-default",
+  "required_capability": "write:unrestricted",
+  "held_capability": "read:default",
+  "recovery": "ACQUIRE_WRITE_CAPABILITY"
+}
+```
+
+**DEFERRED_ADMISSION** — runtime cannot decide synchronously:
+```json
+{
+  "id": "01HZX2J7P3KQE6V9NHTW4M5RBC",
+  "outcome": "DEFERRED",
+  "reason": "DEFERRED_ADMISSION",
+  "retry_after_ms": 250,
+  "recovery": "POLL_INTENT_STATUS"
+}
+```
+
+**MISSING_EVIDENCE** — runtime needs a witness it cannot produce:
+```json
+{
+  "id": "01HZX2J7P3KQE6V9NHTW4M5RBD",
+  "outcome": "OBSTRUCTED",
+  "reason": "MISSING_EVIDENCE",
+  "required_witness": "wx:3f4a...",
+  "available_from": ["runtime:echo-primary"],
+  "recovery": "FETCH_WITNESS_AND_RETRY"
+}
+```
+
+**NOT_IMPLEMENTED** — runtime does not support the operation:
+```json
+{
+  "id": "01HZX2J7P3KQE6V9NHTW4M5RBE",
+  "outcome": "DENIED",
+  "reason": "NOT_IMPLEMENTED",
+  "operation": "RENAME",
+  "note": "runtime does not support atomic multi-site admission",
+  "recovery": "NONE"
+}
+```
+
+**INVALID_DELTA** — the write was structurally incoherent:
+```json
+{
+  "id": "01HZX2J7P3KQE6V9NHTW4M5RBF",
+  "outcome": "DENIED",
+  "reason": "INVALID_DELTA",
+  "detail": "delta base offset 4096 exceeds site length 1283",
+  "recovery": "RE_READ_AND_REPROPOSE"
+}
+```
+
 ### 8.3 Why this matters
 
 The honest failure mode of a causal substrate under concurrent edit is
@@ -1194,9 +1258,11 @@ Add `CREATE`, `WRITE`, `FLUSH`, `RELEASE` for writes, `UNLINK`, `RENAME`.
 - Intents go to Echo; receipts map to typed errnos
 - `.warp/intents/<id>` exposes receipt JSON
 
-After Step 2: vim works. So does `npm install`. Rename is the hard part;
-fall back to `EOPNOTSUPP` if the runtime can't promise atomic two-site
-admission, and document the constraint.
+After Step 2: `vim` writes work. Package-manager writes (npm, pnpm,
+yarn) begin compatibility testing here but are not considered supported
+until G6 verifies their create/rename/unlink behavior. Rename is the
+hard part; fall back to `EOPNOTSUPP` if the runtime can't promise
+atomic two-site admission, and document the constraint.
 
 ### Step 3 — Multi-lane on the same machine
 

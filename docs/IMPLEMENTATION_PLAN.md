@@ -82,6 +82,10 @@ flowchart TD
     M3 --> M4
 ```
 
+> **Execution note:** The gate model in [§11.1](#11-post-review-additions)
+> controls actual build order. The workstreams below describe ownership and
+> scope of deliverables only. **Do not start W1.M1 before G0 passes.**
+
 Total elapsed: ~6-8 weeks for the v0.0.1 → v0.1 trajectory if one person
 works it end-to-end. Parallelizable across W1+W2 and W2+W3 with two
 people; W1 has to finish before either consumer can lock interfaces.
@@ -146,7 +150,7 @@ input FsObserveNodeInput {
     siteId: ID!
 }
 
-input FsObserveContentInput {
+input FsReadProjectionInput {
     siteId: ID!
     offset: Int!
     length: Int!
@@ -156,7 +160,7 @@ input FsListDirectoryInput {
     siteId: ID!
 }
 
-type FsContentReading {
+type FsContentProjection {
     siteId: ID!
     offset: Int!
     length: Int!
@@ -169,7 +173,7 @@ type FsDirectoryReading {
     entries: [FsNode!]!
 }
 
-input FsWriteContentInput {
+input FsProposeContentIntentInput {
     siteId: ID!
     basisHash: String!     # holdersChainHash from a prior read
     newBytes: String!
@@ -198,20 +202,40 @@ input FsDeleteNodeInput {
 type Query {
     fsObserveNode(input: FsObserveNodeInput!): FsNode!
         @wes_op(name: "fsObserveNode")
-    fsObserveContent(input: FsObserveContentInput!): FsContentReading!
-        @wes_op(name: "fsObserveContent")
+    fsReadProjection(input: FsReadProjectionInput!): FsContentProjection!
+        @wes_op(name: "fsReadProjection")
     fsListDirectory(input: FsListDirectoryInput!): FsDirectoryReading!
         @wes_op(name: "fsListDirectory")
 }
 
+"""
+The runtime's response to a mutation intent. Carries the outcome and,
+on success, the new projection. On obstruction, carries the typed reason
+and recovery hint — same shape as a receipt in /.warp/intents/<id>.
+"""
+type FsIntentReceipt {
+    intentId: ID!
+    outcome: IntentOutcome!   # ADMITTED | OBSTRUCTED | DEFERRED | DENIED
+    reason: String            # typed obstruction reason if not ADMITTED
+    newProjection: FsContentProjection  # populated on ADMITTED
+    recovery: String          # recovery hint
+}
+
+enum IntentOutcome {
+    ADMITTED
+    OBSTRUCTED
+    DEFERRED
+    DENIED
+}
+
 type Mutation {
-    fsWriteContent(input: FsWriteContentInput!): FsContentReading!
-        @wes_op(name: "fsWriteContent")
-    fsCreateNode(input: FsCreateNodeInput!): FsNode!
+    fsProposeContentIntent(input: FsProposeContentIntentInput!): FsIntentReceipt!
+        @wes_op(name: "fsProposeContentIntent")
+    fsCreateNode(input: FsCreateNodeInput!): FsIntentReceipt!
         @wes_op(name: "fsCreateNode")
-    fsRenameNode(input: FsRenameNodeInput!): FsNode!
+    fsRenameNode(input: FsRenameNodeInput!): FsIntentReceipt!
         @wes_op(name: "fsRenameNode")
-    fsDeleteNode(input: FsDeleteNodeInput!): FsNode!
+    fsDeleteNode(input: FsDeleteNodeInput!): FsIntentReceipt!
         @wes_op(name: "fsDeleteNode")
 }
 ```
@@ -237,7 +261,7 @@ erDiagram
         Int mtimeUnixSeconds
         String contentHash
     }
-    FsContentReading {
+    FsContentProjection {
         ID siteId FK
         Int offset
         Int length
@@ -247,7 +271,7 @@ erDiagram
     FsDirectoryReading {
         ID siteId FK
     }
-    FsWriteContentInput {
+    FsProposeContentIntentInput {
         ID siteId FK
         String basisHash
         String newBytes
@@ -270,9 +294,9 @@ erDiagram
         String basisHash
     }
     FsNode ||--o{ FsNode : "parent"
-    FsNode ||--|| FsContentReading : "read as"
+    FsNode ||--|| FsContentProjection : "read as"
     FsNode ||--o| FsDirectoryReading : "listed in"
-    FsNode ||--o{ FsWriteContentInput : "written via"
+    FsNode ||--o{ FsProposeContentIntentInput : "written via"
     FsNode ||--o{ FsRenameNodeInput : "renamed via"
     FsNode ||--o{ FsDeleteNodeInput : "deleted via"
 ```
@@ -347,12 +371,12 @@ internals plus the new protocol additions.
 
 ### 3.3 Scope estimate
 
-| Deliverable | Scope |
-|---|---|
-| `warpdrive.graphql` | ~150 lines schema + first-pass Wesley generation |
-| Frontier-advance protocol | Schema additions + 200-line spec section |
-| Continuum spec doc | 500-800 lines |
-| **Total** | **~1 week** for one person familiar with Echo |
+| Deliverable               | Scope                                            |
+| ------------------------- | ------------------------------------------------ |
+| `warpdrive.graphql`       | ~150 lines schema + first-pass Wesley generation |
+| Frontier-advance protocol | Schema additions + 200-line spec section         |
+| Continuum spec doc        | 500-800 lines                                    |
+| **Total**                 | **~1 week** for one person familiar with Echo    |
 
 ### 3.4 Where it lives
 
@@ -411,8 +435,8 @@ crates/echo-fs-runtime/
 ├── src/
 │   ├── lib.rs
 │   ├── handlers/
-│   │   ├── observe.rs        # fsObserveNode, fsObserveContent, fsListDirectory
-│   │   └── mutate.rs         # fsWriteContent, fsCreateNode, fsRenameNode, fsDeleteNode
+│   │   ├── observe.rs        # fsObserveNode, fsReadProjection, fsListDirectory
+│   │   └── mutate.rs         # fsProposeContentIntent, fsCreateNode, fsRenameNode, fsDeleteNode
 │   ├── store/
 │   │   ├── mod.rs            # generic FsStore trait
 │   │   ├── cas_backed.rs     # echo-cas-backed implementation
@@ -537,12 +561,12 @@ classDiagram
     class EchoFsRuntime {
         <<crate: echo-fs-runtime — NEW>>
         +observe_node(input) FsNode
-        +observe_content(input) FsContentReading
+        +read_projection(input) FsContentProjection
         +list_directory(input) FsDirectoryReading
-        +write_content(input) FsContentReading
-        +create_node(input) FsNode
-        +rename_node(input) FsNode
-        +delete_node(input) FsNode
+        +propose_content_intent(input) FsIntentReceipt
+        +create_node(input) FsIntentReceipt
+        +rename_node(input) FsIntentReceipt
+        +delete_node(input) FsIntentReceipt
     }
     class FsStore {
         <<trait>>
@@ -729,8 +753,9 @@ minutes of light browsing.
 #### 5.3.2 Step 2 — Write-through with basis tracking
 
 What ships: the same binary now handles writes. `vim :w` works.
-`npm install` works (creates node_modules, writes files). Stale-basis
-writes return `EBUSY` with detail in `/.warp/intents/<id>`.
+Stale-basis writes return `EBUSY` with detail in `/.warp/intents/<id>`.
+Package-manager compatibility (npm, pnpm, yarn) begins here but is not
+declared supported until G6 verifies create/rename/unlink behavior.
 
 Components added:
 
@@ -753,8 +778,7 @@ Scope: ~2000 lines added.
 
 Exit criteria: vim save, edit, save again works without conflict.
 Two concurrent vims on the same file → one wins, the other gets
-`EBUSY` with a useful receipt under `/.warp/intents/`. `npm install`
-completes successfully against a fresh mount.
+`EBUSY` with a well-formed receipt under `/.warp/intents/last`.
 
 #### 5.3.3 Step 3 — Multi-lane on the same machine
 
@@ -818,15 +842,29 @@ mount options `runtime=echo` and `runtime=in-memory` are both useful.
 
 Combining the workstream milestones into shipping moments:
 
-### 6.1 M0 — Foundations (1 week)
+### 6.1 M0 — G-1 / G0 / G1 Falsification (1 week)
 
-Goal: scaffolding for everyone to start working in parallel.
+Goal: answer the load-bearing unknowns before any protocol ceremony begins.
 
-- W1.M1 (warpdrive.graphql generates)
-- W3 scaffold: cargo workspace, empty crates, CI green
-- Decision log started for the open questions in §9
+**G-1 repo hygiene (hours, not days):**
+- LICENSE matches all SPDX headers
+- Crate and repo naming locked
+- README states experimental status
 
-Shipping value: none yet. Unblocks the rest.
+**G0 — embedding spike:**
+- warp-wasm loads through wasmtime in a Rust binary
+- One real `observe` call round-trips
+- If this fails: pivot immediately to Unix socket daemon path
+
+**G1 — in-memory FUSE fake tree:**
+- Cargo workspace scaffolded with empty crates
+- In-memory driver exposes hardcoded fixture tree (see §11.6)
+- `ls`, `cat`, `find`, `rg` all work against it
+- `.warp/coordinate`, `.warp/runtime`, `.warp/stats` readable
+
+Shipping value: the POSIX translation layer, inode synthesizer, cache,
+and `.warp/` surface are all proven before Echo enters the room. G0
+answers the embedding question that everything else depends on.
 
 ### 6.2 M1 — "Read it" (2-3 weeks)
 
@@ -1257,26 +1295,41 @@ or rejected with a typed obstruction. It does **not** mean data is on
 durable storage — that is the runtime's guarantee, not the membrane's.
 Document this clearly for users of write-mode mounts.
 
-#### 11.2.3 Honest POSIX subset
+#### 11.2.3 Honest POSIX subset (through v0.1)
 
-WARP DRIVE does not implement all POSIX. The v0.0.1 committed subset:
+WARP DRIVE does not implement all POSIX. The table below splits the
+committed subset by release. v0.0.1 is read-only. Writes ship with v0.1.
 
-| Operation | Status | Notes |
+**v0.0.1 / G2 — read-only subset:**
+
+| Operation | Status |
+|---|---|
+| `stat`, `lstat` | ✅ |
+| `opendir`, `readdir` | ✅ |
+| `open(O_RDONLY)`, `read` | ✅ |
+| `symlink`, `readlink` | ✅ |
+
+**v0.1 / G4–G8 — write + multi-lane subset:**
+
+| Operation | Gate | Notes |
 |---|---|---|
-| `stat`, `lstat` | ✅ | |
-| `opendir`, `readdir` | ✅ | |
-| `open(O_RDONLY)`, `read` | ✅ | |
-| `open(O_WRONLY)`, `write`, `close` | ✅ G4+ | |
-| `creat`, `open(O_CREAT)` | ✅ G6+ | |
-| `unlink` | ✅ G6+ | |
-| `rename` | ✅ if `supports_atomic_multi_site_admission`; `EOPNOTSUPP` otherwise | |
-| `symlink`, `readlink` | ✅ | |
-| `chmod`, `chown` | ✅ where runtime allows | |
-| `fsync` | ✅ (see §11.2.2) | |
-| `mmap(MAP_SHARED \| PROT_WRITE)` | ❌ `ENODEV` — by design | SQLite default mode is also ❌ |
-| `O_APPEND` | ⚠️ best-effort; may obstruct and require retry | |
-| `flock`, `fcntl` locks | ❌ out of scope v0.0.1 | |
-| `sendfile`, `splice` | ❌ out of scope v0.0.1 | |
+| `open(O_WRONLY)`, `write`, `close` | G4 | |
+| `fsync` | G4 | see §11.2.2 |
+| `creat`, `open(O_CREAT)` | G6 | |
+| `unlink` | G6 | |
+| `rename` | G6 | `EOPNOTSUPP` if runtime lacks atomic multi-site admission |
+| `chmod`, `chown` | G6 | where runtime allows |
+| `chmod`, `chown` | G6 | |
+
+**Unsupported by design (all versions):**
+
+| Operation | errno | Reason |
+|---|---|---|
+| `mmap(MAP_SHARED \| PROT_WRITE)` | `ENODEV` | requires substrate-level shared mutable state |
+| SQLite default mode | — | depends on above |
+| `O_APPEND` | ⚠️ best-effort | "current end" is a moving target; may obstruct |
+| `flock`, `fcntl` locks | `EOPNOTSUPP` | out of scope |
+| `sendfile`, `splice` | `EOPNOTSUPP` | out of scope |
 
 ### 11.3 Tool compatibility matrix
 
