@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+# © James Ross Ω FLYING•ROBOTS <https://github.com/flyingrobots>
+[workspace]
+members = [
+    "crates/warp-drive-g0-spike",
+]
+resolver = "2"
+
+[workspace.package]
+license     = "Apache-2.0"
+repository  = "https://github.com/flyingrobots/warp-drive"
+rust-version = "1.90.0"
+edition     = "2024"
+
+# Path dependencies into the echo workspace (sibling repo).
+# These will become version dependencies once echo publishes to crates.io.
+[workspace.dependencies]
+echo-wasm-abi = { path = "../echo/crates/echo-wasm-abi" }
+warp-wasm     = { path = "../echo/crates/warp-wasm" }

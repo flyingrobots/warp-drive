@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+# © James Ross Ω FLYING•ROBOTS <https://github.com/flyingrobots>
+[package]
+name         = "warp-drive-g0-spike"
+version      = "0.0.1"
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+description  = "G0 spike: prove warp-wasm embeds and observes from outside the echo workspace"
+publish      = false
+
+[[bin]]
+name = "g0-spike"
+path = "src/main.rs"
+
+[dependencies]
+echo-wasm-abi = { workspace = true }
+warp-wasm     = { workspace = true, features = ["engine"] }
