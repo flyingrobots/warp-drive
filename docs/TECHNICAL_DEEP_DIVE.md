@@ -420,10 +420,10 @@ flowchart TD
         R5[Receipt → POSIX errno]
     end
     subgraph Runtimes["Continuum-speaking Runtimes"]
-        RT1[Echo\ndeterministic WASM kernel]
-        RT2[git-warp\nGit objects as substrate]
-        RT3[postgres-warp\nhypothetical SQL runtime]
-        RT4[in-memory\ndev runtime for tests]
+        RT1[Echo<br />deterministic WASM kernel]
+        RT2[git-warp<br />Git objects as substrate]
+        RT3[postgres-warp<br />hypothetical SQL runtime]
+        RT4[in-memory<br />dev runtime for tests]
     end
     CultureA -->|POSIX syscalls| Membrane
     Membrane -->|Continuum messages| Runtimes
@@ -852,11 +852,11 @@ that matches its semantics, with detail available under `/.warp/intents/`.
 ```mermaid
 flowchart TD
     I[Intent submitted to runtime] --> RR{Receipt outcome}
-    RR -->|ADMITTED| OK[Return 0\nUpdate retained basis to new_frontier]
-    RR -->|STALE_BASIS| EB1[EBUSY\nWrite receipt → /.warp/intents/id]
-    RR -->|CONCURRENT_CONFLICT| EB2[EBUSY\nWrite receipt → /.warp/intents/id]
-    RR -->|DEFERRED_ADMISSION| EA[EAGAIN\nRetry guidance → /.warp/intents/id]
-    RR -->|POLICY_DENIAL| AC[EACCES\nPolicy detail → /.warp/intents/id]
+    RR -->|ADMITTED| OK[Return 0<br />Update retained basis to new_frontier]
+    RR -->|STALE_BASIS| EB1[EBUSY<br />Write receipt → /.warp/intents/id]
+    RR -->|CONCURRENT_CONFLICT| EB2[EBUSY<br />Write receipt → /.warp/intents/id]
+    RR -->|DEFERRED_ADMISSION| EA[EAGAIN<br />Retry guidance → /.warp/intents/id]
+    RR -->|POLICY_DENIAL| AC[EACCES<br />Policy detail → /.warp/intents/id]
     RR -->|BUDGET_EXHAUSTED| DQ[EDQUOT]
     RR -->|MISSING_EVIDENCE| IO[EIO]
     RR -->|COORDINATE_GONE| ST[ESTALE]
@@ -926,7 +926,7 @@ mount -t warpdrive -o runtime=echo,coord=@alt-design /repo  ~/review
 ```mermaid
 flowchart TD
     subgraph Runtime["Echo Runtime — Single Causal Substrate"]
-        H[(Witnessed\nCausal History)]
+        H[(Witnessed<br />Causal History)]
     end
     subgraph MA["Mount: @main"]
         MemA[Membrane]
@@ -943,9 +943,9 @@ flowchart TD
     Human([Human]) --> DirA --> MemA
     Agent([AI Agent]) --> DirB --> MemB
     Reviewer([Reviewer]) --> DirC --> MemC
-    MemA -->|Continuum\nIntents + Holograms| H
-    MemB -->|Continuum\nIntents + Holograms| H
-    MemC -->|Continuum\nObservations| H
+    MemA -->|Continuum<br />Intents + Holograms| H
+    MemB -->|Continuum<br />Intents + Holograms| H
+    MemC -->|Continuum<br />Observations| H
     H -->|FrontierAdvanceEvent| MemA
     H -->|FrontierAdvanceEvent| MemB
 ```

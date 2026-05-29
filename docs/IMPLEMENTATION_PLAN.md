@@ -64,13 +64,13 @@ agent collaboration UX, performance) is out of scope for this plan.
 
 ```mermaid
 flowchart TD
-    W1[W1: Continuum\nProtocol Formalization\n~1 week]
-    W2[W2: Echo\nRuntime Support\n~3 weeks]
-    W3[W3: WARP DRIVE\nMembrane\n~3 weeks]
-    M1[M1: Read It\nv0.0.1]
+    W1[W1: Continuum<br />Protocol Formalization<br />~1 week]
+    W2[W2: Echo<br />Runtime Support<br />~3 weeks]
+    W3[W3: WARP DRIVE<br />Membrane<br />~3 weeks]
+    M1[M1: Read It<br />v0.0.1]
     M2[M2: Write It]
     M3[M3: Coordinate It]
-    M4[M4: Substrate It\nv0.1]
+    M4[M4: Substrate It<br />v0.1]
 
     W1 --> W2
     W1 --> W3
@@ -315,7 +315,7 @@ sequenceDiagram
     R-->>M: SubscriptionHandle
 
     Note over R: A suffix is admitted at @main
-    R->>M: FrontierAdvanceEvent{coordinate, newFrontier,\ntouchedSites, advancingSuffixIds}
+    R->>M: FrontierAdvanceEvent{coordinate, newFrontier,<br />touchedSites, advancingSuffixIds}
     M->>M: Invalidate hologram cache for touchedSites
     M->>M: Synthesize inotify events for watching processes
 
@@ -875,11 +875,11 @@ theoretical. Two drivers, same tests, same membrane.
 
 ```mermaid
 flowchart TD
-    M0[M0: Foundations\nwarpdrive.graphql + scaffold\n~1 week]
-    M1[M1: Read It\nread-only Echo mount\n+2–3 weeks]
-    M2[M2: Write It\nfull read+write cycle\n+3–4 weeks]
-    M3[M3: Coordinate It\nmulti-lane mounts\n+1–2 weeks]
-    M4[M4: Substrate It\nin-memory driver\n+1 week]
+    M0[M0: Foundations<br />warpdrive.graphql + scaffold<br />~1 week]
+    M1[M1: Read It<br />read-only Echo mount<br />+2–3 weeks]
+    M2[M2: Write It<br />full read+write cycle<br />+3–4 weeks]
+    M3[M3: Coordinate It<br />multi-lane mounts<br />+1–2 weeks]
+    M4[M4: Substrate It<br />in-memory driver<br />+1 week]
     V001([v0.0.1])
     V01([v0.1])
 
@@ -917,17 +917,17 @@ W2.M5 (lanes) ──────────────────────
 
 ```mermaid
 flowchart TD
-    W1M1[W1.M1\nwarpdrive.graphql generates]
-    W1M2[W1.M2\nFrontier-advance protocol]
-    W2M1[W2.M1\nRead handlers]
-    W2M2[W2.M2\nWrite handlers]
-    W2M3[W2.M3\nAdvance subscription]
-    W2M4[W2.M4\nEmbeddable entry point]
-    W2M5[W2.M5\nLane enumeration]
-    W3M1[W3.M1\nRead-only mount]
-    W3M2[W3.M2\nWrites]
-    W3M3[W3.M3\nMulti-lane]
-    W3M4[W3.M4\nIn-memory driver]
+    W1M1[W1.M1<br />warpdrive.graphql generates]
+    W1M2[W1.M2<br />Frontier-advance protocol]
+    W2M1[W2.M1<br />Read handlers]
+    W2M2[W2.M2<br />Write handlers]
+    W2M3[W2.M3<br />Advance subscription]
+    W2M4[W2.M4<br />Embeddable entry point]
+    W2M5[W2.M5<br />Lane enumeration]
+    W3M1[W3.M1<br />Read-only mount]
+    W3M2[W3.M2<br />Writes]
+    W3M3[W3.M3<br />Multi-lane]
+    W3M4[W3.M4<br />In-memory driver]
     M1([M1: Read It])
     M2([M2: Write It])
     M3([M3: Coordinate It])
