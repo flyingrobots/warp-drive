@@ -24,6 +24,7 @@
 8. [Risks](#8-risks)
 9. [Decisions needed before starting](#9-decisions-needed-before-starting)
 10. [Audit of what already exists](#10-audit-of-what-already-exists)
+11. [Post-review additions](#11-post-review-additions)
 
 ---
 
@@ -1170,6 +1171,226 @@ Two cards in echo's backlog are directly relevant:
 Plus jedit's bad-code card `optic-codec-mixes-wire-with-session.md`
 is the cautionary tale for why basis discipline matters and why
 clients shouldn't conflate wire shape with internal context.
+
+---
+
+## 11. Post-review additions
+
+*Incorporating feedback from project design review, 2026-05-28.*
+
+### 11.1 Revised execution order
+
+The workstream model (W1/W2/W3) describes **who does what**. The gate
+model below describes **what order to actually build things in**. These
+are complementary; when they conflict, the gate model wins.
+
+Each gate is a testable condition. Nothing advances until the gate
+condition is demonstrably true.
+
+| Gate | Condition | Why it comes first |
+|---|---|---|
+| **G0** | wasmtime loads warp-wasm; one `observe` round-trips | The whole embedded path depends on this. If it fails, pivot to daemon. |
+| **G1** | In-memory FUSE mount: `ls`, `cat`, `rg` on a fake hardcoded tree | Proves POSIX translation, inode strategy, `.warp/` surface — without Echo's complexity. |
+| **G2** | Echo read-only mount: real coordinate, real `observe` | Proves membrane + Echo integration end-to-end. |
+| **G3** | `.warp/` diagnostics + perf counters readable | Without diagnostics, every bug is a haunted filesystem. |
+| **G4** | Whole-file writes admitted via basis-tracking | Simplest write path; diff complexity deferred. |
+| **G5** | Stale-basis obstruction + receipt UX | The moral centre of the project. Must feel good. |
+| **G6** | `create`, `unlink`, `rename` working | Only after write receipts are solid. |
+| **G7** | Two mounts at different coordinates on the same machine | Multi-lane reality. |
+| **G8** | Second driver passes same membrane tests | Substrate-agnostic claim becomes empirically true. |
+
+```mermaid
+flowchart TD
+    G0["G0: warp-wasm embeds<br />and observes once"]
+    G1["G1: In-memory FUSE<br />read-only fake tree"]
+    G2["G2: Echo FUSE<br />read-only real coordinate"]
+    G3["G3: .warp/ diagnostics<br />+ perf counters"]
+    G4["G4: Whole-file writes<br />with basis tracking"]
+    G5["G5: Stale-basis obstruction<br />+ receipt UX"]
+    G6["G6: create / unlink / rename"]
+    G7["G7: Multi-lane mounts<br />two coordinates"]
+    G8["G8: Second driver<br />passes membrane tests"]
+
+    G0 --> G1
+    G1 --> G2
+    G2 --> G3
+    G3 --> G4
+    G4 --> G5
+    G5 --> G6
+    G6 --> G7
+    G7 --> G8
+```
+
+**G0 is the dragon.** If warp-wasm cannot be loaded through wasmtime
+and asked to perform one real `observe`, the entire embedded path
+pivots to a Unix socket daemon. The daemon works; it adds ~1.5 weeks.
+But do not invest in W1/W2 schema work before G0 is answered.
+
+**G1 gives you stable tests before Echo enters the room.** A fake
+in-memory runtime with three hardcoded files proves the POSIX
+translation layer, the inode synthesizer, the cache, and the `.warp/`
+synthetic surface — without Echo's complexity. Pull the in-memory
+driver forward from G8 to G1.
+
+**G5 is the product.** A stale write that fails with a well-formed
+receipt under `/.warp/intents/` is the moment the project's moral
+argument becomes tactile. Reach G5 deliberately.
+
+### 11.2 Interface contracts
+
+These are laws. Write them in code and tests, not just prose.
+
+#### 11.2.1 Inode stability
+
+Inodes synthesized by the membrane are **stable for the lifetime of a
+mount process**. They are not meaningful across remounts. Tools that
+cache inodes (editors, Git, some IDEs) will see new inodes after
+remount; this is acceptable and must be documented. If inode identity
+changes *within* a single mount, FUSE caching breaks and everything
+becomes soup. This must not happen.
+
+#### 11.2.2 fsync semantics
+
+`fsync(2)` in WARP DRIVE means: the Intent for this file handle has
+been submitted to the runtime and either admitted (`Receipt{ADMITTED}`)
+or rejected with a typed obstruction. It does **not** mean data is on
+durable storage — that is the runtime's guarantee, not the membrane's.
+Document this clearly for users of write-mode mounts.
+
+#### 11.2.3 Honest POSIX subset
+
+WARP DRIVE does not implement all POSIX. The v0.0.1 committed subset:
+
+| Operation | Status | Notes |
+|---|---|---|
+| `stat`, `lstat` | ✅ | |
+| `opendir`, `readdir` | ✅ | |
+| `open(O_RDONLY)`, `read` | ✅ | |
+| `open(O_WRONLY)`, `write`, `close` | ✅ G4+ | |
+| `creat`, `open(O_CREAT)` | ✅ G6+ | |
+| `unlink` | ✅ G6+ | |
+| `rename` | ✅ if `supports_atomic_multi_site_admission`; `EOPNOTSUPP` otherwise | |
+| `symlink`, `readlink` | ✅ | |
+| `chmod`, `chown` | ✅ where runtime allows | |
+| `fsync` | ✅ (see §11.2.2) | |
+| `mmap(MAP_SHARED \| PROT_WRITE)` | ❌ `ENODEV` — by design | SQLite default mode is also ❌ |
+| `O_APPEND` | ⚠️ best-effort; may obstruct and require retry | |
+| `flock`, `fcntl` locks | ❌ out of scope v0.0.1 | |
+| `sendfile`, `splice` | ❌ out of scope v0.0.1 | |
+
+### 11.3 Tool compatibility matrix
+
+Build and maintain this. Mark each tool at each gate. Unexplained
+failures are bugs; understood failures are product decisions.
+
+| Tool | G2 (read) | G4 (write) | G6 (full) | Notes |
+|---|---|---|---|---|
+| `ls` | 🎯 | – | – | |
+| `cat` | 🎯 | – | – | |
+| `find` | 🎯 | – | – | |
+| `tree` | 🎯 | – | – | |
+| `ripgrep` | 🎯 | – | – | |
+| `vim` (read) | 🎯 | – | – | |
+| `vim` (write) | – | 🎯 | – | |
+| `git status` | 🎯 | – | – | |
+| `git diff` | 🎯 | – | – | |
+| `touch` | – | – | 🎯 | |
+| `mv` | – | – | 🎯 | Needs atomic rename |
+| `rm` | – | – | 🎯 | |
+| `cp` | – | 🎯 | – | |
+| `ln -s` | – | – | 🎯 | |
+| `chmod` | – | – | 🎯 | |
+| `cargo build` | – | 🎯 | – | Writes to `target/` |
+| `npm install` | – | – | 🎯 | Needs atomic rename |
+| `pnpm install` | – | – | 🎯 | Needs atomic rename |
+| `git clone` | – | – | 🎯 | Full write path |
+| SQLite (default) | ❌ | ❌ | ❌ | `mmap MAP_SHARED PROT_WRITE` — by design |
+
+Legend: 🎯 target (must work at this gate), ✅ verified, ❌ not supported by design, ⚠️ partial
+
+### 11.4 Steering guidance
+
+#### MUST
+
+- **Spike G0 before anything else.** No schema work, no protocol polish
+  until warp-wasm loads through wasmtime and observes once.
+- **Build the in-memory driver at G1, not G8.** Deterministic tests,
+  isolation from Echo readiness, proof that the driver trait is real.
+- **Define inode stability as law.** See §11.2.1.
+- **Define fsync semantics explicitly.** See §11.2.2.
+- **Make stale-basis failure beautiful.** The receipt under
+  `/.warp/intents/last` is the project's differentiator. It should make
+  users say: *the filesystem knows what happened.*
+- **Maintain the tool compatibility matrix.** Start at G2; update at
+  every gate.
+
+#### SHOULD
+
+- **Ship read-only (G2) as fast as possible.** Read-only WARP DRIVE is
+  already useful for historical inspection and coordinate browsing.
+  Writes are where complexity explodes.
+- **Put performance counters in from day one.** Count LOOKUP, GETATTR,
+  READDIR, cache hits/misses, runtime calls, average observe latency.
+  Otherwise perf debugging becomes séance-driven engineering.
+- **Keep Continuum minimal until the second driver hurts.** A protocol
+  becomes real when two implementations fight over it. Until then,
+  disciplined contract, not constitution.
+- **Make `.warp/` optionally hideable.** Mount option:
+  `dotwarp=on|off|debug`. Some tools walk every directory.
+- **Treat rename as a first-class design problem.** Clear downgrade to
+  `EOPNOTSUPP` if the runtime can't guarantee atomicity.
+- **Publish the honest POSIX subset.** See §11.2.3. This is not
+  weakness; it is adult supervision.
+
+#### COULD
+
+- **`warp-drive doctor`** — checks FUSE availability, runtime
+  connection, coordinate validity, capabilities, and basic read
+  latency.
+- **`warp-drive trace` mode** — prints syscall → membrane operation →
+  Continuum message → receipt. Invaluable for debugging and demos.
+- **Pinned historical read-only mounts.** Time-travel read-only is
+  low-risk and high-wow. Avoids write semantics while proving the
+  causal substrate matters.
+- **JSON Lines receipt log.** `/.warp/intents/log.jsonl` +
+  `/.warp/intents/last` alongside per-id files.
+
+#### DON'T
+
+- **DON'T build the daemon before G0 proves embedding impossible.**
+  Embedding first; daemon only if embedding is grotesque.
+- **DON'T let build-artifact projections into v0.1.** Cool idea; black
+  hole. Stays in the backlog.
+- **DON'T use "Git replacement" language before G8.** The early message
+  is: WARP DRIVE gives causal substrates a POSIX face.
+- **DON'T fake unsupported semantics.** `ENODEV` for unsupported mmap.
+  `EOPNOTSUPP` for unsupported rename. The project's credibility depends
+  on refusing to lie.
+- **DON'T make writes path-based inside the runtime.** Paths are
+  membrane business. The runtime only sees site identity.
+
+### 11.5 Enhanced .warp/ surface
+
+The full diagnostic surface targeted for G3+:
+
+```text
+/.warp/coordinate            # current coordinate as text
+/.warp/runtime               # runtime identifier + connection summary
+/.warp/holograms/<inode>     # provenance bundle for last reading at <inode>
+/.warp/intents/pending       # in-flight Intent identifiers
+/.warp/intents/<id>          # receipt JSON for a specific Intent
+/.warp/intents/last          # symlink to most recent receipt
+/.warp/intents/log.jsonl     # append-only receipt log
+/.warp/lanes                 # newline-separated list of lanes
+/.warp/witness/<oid>         # raw witness bytes for verifiers
+/.warp/cache                 # cache stats: size, entries, hit rate
+/.warp/stats                 # perf counters: lookups, reads, writes, latencies
+/.warp/errors                # recent typed obstruction log
+```
+
+`/.warp/stats` is the observable heartbeat. If WARP DRIVE feels slow
+and you cannot explain why, `watch cat /.warp/stats` should give an
+answer within 30 seconds.
 
 ---
 

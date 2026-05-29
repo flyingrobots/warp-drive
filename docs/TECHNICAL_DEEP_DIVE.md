@@ -551,13 +551,18 @@ There is also a hidden control surface for tools that want to introspect
 the substrate:
 
 ```text
-/.warp/coordinate          # current coordinate as text
-/.warp/runtime             # runtime identifier + connection summary
-/.warp/holograms/<inode>   # provenance bundle for the last reading at <inode>
-/.warp/intents/pending     # in-flight Intent identifiers
-/.warp/intents/<id>        # receipt for a specific Intent
-/.warp/lanes               # newline-separated list of lanes the runtime exposes
-/.warp/witness/<oid>       # raw witness bytes for verifiers
+/.warp/coordinate            # current coordinate as text
+/.warp/runtime               # runtime identifier + connection summary
+/.warp/holograms/<inode>     # provenance bundle for last reading at <inode>
+/.warp/intents/pending       # in-flight Intent identifiers
+/.warp/intents/<id>          # receipt JSON for a specific Intent
+/.warp/intents/last          # symlink to most recent receipt
+/.warp/intents/log.jsonl     # append-only receipt log
+/.warp/lanes                 # newline-separated list of lanes the runtime exposes
+/.warp/witness/<oid>         # raw witness bytes for verifiers
+/.warp/cache                 # cache stats: size, entries, hit rate
+/.warp/stats                 # perf counters: lookups, reads, writes, latencies
+/.warp/errors                # recent typed obstruction log
 ```
 
 This is a deliberate, named surface — not a leak. Tools that want to be
@@ -1139,6 +1144,23 @@ is.
 
 The membrane's job is to translate cleanly, not to hide the substrate.
 
+### 11.6 Not a full POSIX implementation
+
+WARP DRIVE implements a declared subset of POSIX, not all of it.
+`mmap(MAP_SHARED|PROT_WRITE)` returns `ENODEV` by design. Unsupported
+`rename(2)` atomicity returns `EOPNOTSUPP`. Some tools — SQLite in
+default mode, applications that rely on shared writable mappings — will
+not work on a WARP DRIVE mount. This is not a bug to fix; it is a
+boundary to document.
+
+A published "what we don't support and why" list increases trust more
+than a promise list. See the implementation plan (§11.2.3) for the
+full subset table. The honest framing is:
+
+> WARP DRIVE is compatible with most editors, most shell tools, most
+> build systems, and most VCS operations. It is not compatible with
+> everything, and it does not pretend to be.
+
 ---
 
 ## 12. A credible v0.0.1 path
@@ -1158,9 +1180,10 @@ Smallest useful thing. A FUSE binary that:
 After Step 1: you can `cat`, `ls`, `grep`, and open with read-only tools.
 No writes. No remounts. One runtime.
 
-This proves the read-path translation works end-to-end and that the
-performance is plausible (within ~2x of a real filesystem on a warm
-cache).
+This proves the read-path translation works end-to-end and that
+warm-cache interactive latency — for stat, lookup, readdir, and
+sequential reads — is good enough that `vim`, `rg`, and `tree` do not
+feel broken. Measure before claiming anything specific.
 
 ### Step 2 — Write-through with basis-tracking
 
@@ -1200,7 +1223,7 @@ config-level swap is demonstrable.
 - Build-artifact projections (Step 10.3)
 - Time-travel debugging tooling (Step 10.4)
 - A daemon for serving multiple mounts efficiently (likely a v0.0.2 thing)
-- Performance work beyond "within 2x of real filesystem"
+- Performance optimisation beyond "warm-cache interactive tools don't feel broken"
 - macOS support beyond "uses macFUSE if available"
 - Windows support at all
 
@@ -1214,7 +1237,9 @@ The honest list of things this deep dive does not yet resolve.
 
 Editors stat files constantly. ripgrep walks trees. A naïve implementation
 could be 100x slower than ext4. The cache is essential; the cache key is
-unforgiving. Real measurements needed before claiming "within 2x."
+unforgiving. The early target is not "within 2x of ext4" — it is
+"warm-cache stat latency is low enough that `vim` and `rg` do not feel
+broken." Measure that first; optimise from there.
 
 ### 13.2 How does a directory with a million files materialize?
 
