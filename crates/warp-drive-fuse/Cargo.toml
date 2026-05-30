@@ -14,6 +14,13 @@ publish      = false
 name = "warp-drive-fuse"
 path = "src/main.rs"
 
+[features]
+# Allow the crate to compile on macOS without macFUSE installed.
+# The binary will build but `mount2` will return an error at runtime.
+# Run `cargo xtask install-deps` to install macFUSE, then rebuild without
+# this feature for a real mount.
+compile-without-macfuse = ["fuser/macos-no-mount"]
+
 [lints]
 workspace = true
 

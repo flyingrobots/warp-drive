@@ -25,10 +25,7 @@ warp-wasm     = { path = "../echo-warp-drive/crates/warp-wasm" }
 warp-drive-core = { path = "crates/warp-drive-core" }
 
 clap               = { version = "4",    features = ["derive"] }
-# macos-no-mount: compile without macFUSE installed. Mounting still fails at
-# runtime on macOS until macFUSE is installed (`brew install --cask macfuse`).
-# Remove this feature flag after installing macFUSE.
-fuser              = { version = "0.17", features = ["macos-no-mount"] }
+fuser              = { version = "0.17" }
 libc               = "0.2"
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
