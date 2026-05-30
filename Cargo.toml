@@ -5,6 +5,7 @@ members = [
     "crates/warp-drive-core",
     "crates/warp-drive-fuse",
     "crates/warp-drive-g0-spike",
+    "xtask",
 ]
 resolver = "2"
 
