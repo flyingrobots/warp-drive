@@ -1,0 +1,309 @@
+// SPDX-License-Identifier: Apache-2.0
+// © James Ross Ω FLYING•ROBOTS <https://github.com/flyingrobots>
+
+//! Domain types and hardcoded fixture tree for the G1 gate.
+//!
+//! **What this crate owns:** virtual filesystem node model; the G1 fixture tree.
+//!
+//! **What this crate must not know:** FUSE, libc, OS paths, Echo, sockets,
+//! environment variables, wall-clock time, or async runtimes.
+//!
+//! **Layer:** core.
+//!
+//! **Introduced at:** G1.
+
+use std::collections::HashMap;
+
+/// A stable inode number.
+///
+/// FUSE reserves inode `1` for the root directory. All other inodes in the
+/// G1 fixture are statically assigned and will never change for the same
+/// logical node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Ino(pub u64);
+
+/// Root inode — always 1 per FUSE convention.
+pub const ROOT_INO: Ino = Ino(1);
+
+/// Kind of virtual filesystem node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeKind {
+    /// A regular file with byte content.
+    RegularFile,
+    /// A directory containing named child nodes.
+    Directory,
+    /// A symbolic link with a byte-string target.
+    Symlink,
+}
+
+/// Content payload for a virtual node.
+pub enum NodeContent {
+    /// Static byte content (regular files).
+    Bytes(&'static [u8]),
+    /// Named children of a directory: `(child_ino, name_bytes)`.
+    Children(Vec<(Ino, &'static [u8])>),
+    /// Symlink target as raw bytes (not assumed to be UTF-8).
+    Link(&'static [u8]),
+}
+
+/// A single node in the virtual filesystem.
+pub struct VirtualNode {
+    /// Stable inode number.
+    pub ino: Ino,
+    /// Inode of the parent directory. For the root, parent is itself.
+    pub parent_ino: Ino,
+    /// Node type.
+    pub kind: NodeKind,
+    /// Node content.
+    pub content: NodeContent,
+}
+
+impl VirtualNode {
+    /// Byte size of this node's content.
+    ///
+    /// For directories this returns `0`; FUSE computes directory size from
+    /// the kernel's readdir results, not from a size field.
+    #[must_use]
+    pub const fn size(&self) -> u64 {
+        match &self.content {
+            NodeContent::Bytes(b) => b.len() as u64,
+            NodeContent::Children(_) => 0,
+            NodeContent::Link(l) => l.len() as u64,
+        }
+    }
+}
+
+/// The complete virtual filesystem tree for the G1 gate.
+///
+/// Inode assignment:
+///
+/// ```text
+///  1 = /                      (root directory)
+///  2 = /README.md
+///  3 = /package.json
+///  4 = /src/
+///  5 = /src/main.ts
+///  6 = /src/lib.ts
+///  7 = /empty/
+///  8 = /links/
+///  9 = /links/readme          (symlink → ../README.md)
+/// 10 = /.warp/
+/// 11 = /.warp/coordinate
+/// 12 = /.warp/runtime
+/// 13 = /.warp/stats
+/// ```
+pub struct FixtureTree {
+    nodes: HashMap<Ino, VirtualNode>,
+}
+
+impl FixtureTree {
+    /// Construct the hardcoded G1 fixture tree.
+    ///
+    /// # Why the `too_many_lines` allow
+    ///
+    /// The 13-node fixture requires 13 explicit `nodes.insert(…)` blocks. Splitting
+    /// them into sub-functions would add abstraction with no modularity benefit —
+    /// the verbosity is inherent to the static definition, not a design smell.
+    #[must_use]
+    #[allow(clippy::too_many_lines)]
+    pub fn new() -> Self {
+        let mut nodes: HashMap<Ino, VirtualNode> = HashMap::new();
+
+        // ── /README.md (ino 2) ───────────────────────────────────────────────
+        nodes.insert(Ino(2), VirtualNode {
+            ino: Ino(2),
+            parent_ino: ROOT_INO,
+            kind: NodeKind::RegularFile,
+            content: NodeContent::Bytes(
+                b"# WARP DRIVE G1 Fixture\n\
+                  A minimal fake tree for proving the POSIX translation layer.\n",
+            ),
+        });
+
+        // ── /package.json (ino 3) ────────────────────────────────────────────
+        nodes.insert(Ino(3), VirtualNode {
+            ino: Ino(3),
+            parent_ino: ROOT_INO,
+            kind: NodeKind::RegularFile,
+            content: NodeContent::Bytes(
+                b"{\n  \"name\": \"warp-drive-g1\",\n  \"version\": \"0.0.1\"\n}\n",
+            ),
+        });
+
+        // ── /src/main.ts (ino 5) ─────────────────────────────────────────────
+        nodes.insert(Ino(5), VirtualNode {
+            ino: Ino(5),
+            parent_ino: Ino(4),
+            kind: NodeKind::RegularFile,
+            content: NodeContent::Bytes(
+                b"export function main(): void {\n\
+                  \x20\x20console.log(\"hello from warp-drive G1 fixture\");\n\
+                  }\n",
+            ),
+        });
+
+        // ── /src/lib.ts (ino 6) ──────────────────────────────────────────────
+        nodes.insert(Ino(6), VirtualNode {
+            ino: Ino(6),
+            parent_ino: Ino(4),
+            kind: NodeKind::RegularFile,
+            content: NodeContent::Bytes(
+                b"export function identity<T>(x: T): T {\n\
+                  \x20\x20return x;\n\
+                  }\n",
+            ),
+        });
+
+        // ── /src/ (ino 4) ────────────────────────────────────────────────────
+        nodes.insert(Ino(4), VirtualNode {
+            ino: Ino(4),
+            parent_ino: ROOT_INO,
+            kind: NodeKind::Directory,
+            content: NodeContent::Children(vec![
+                (Ino(5), b"main.ts"),
+                (Ino(6), b"lib.ts"),
+            ]),
+        });
+
+        // ── /empty/ (ino 7) ──────────────────────────────────────────────────
+        nodes.insert(Ino(7), VirtualNode {
+            ino: Ino(7),
+            parent_ino: ROOT_INO,
+            kind: NodeKind::Directory,
+            content: NodeContent::Children(vec![]),
+        });
+
+        // ── /links/readme (ino 9, symlink → ../README.md) ────────────────────
+        nodes.insert(Ino(9), VirtualNode {
+            ino: Ino(9),
+            parent_ino: Ino(8),
+            kind: NodeKind::Symlink,
+            content: NodeContent::Link(b"../README.md"),
+        });
+
+        // ── /links/ (ino 8) ──────────────────────────────────────────────────
+        nodes.insert(Ino(8), VirtualNode {
+            ino: Ino(8),
+            parent_ino: ROOT_INO,
+            kind: NodeKind::Directory,
+            content: NodeContent::Children(vec![
+                (Ino(9), b"readme"),
+            ]),
+        });
+
+        // ── /.warp/coordinate (ino 11) ───────────────────────────────────────
+        nodes.insert(Ino(11), VirtualNode {
+            ino: Ino(11),
+            parent_ino: Ino(10),
+            kind: NodeKind::RegularFile,
+            content: NodeContent::Bytes(
+                b"{\"worldline\":\"00000000-0000-0000-0000-000000000001\",\
+                  \"frontier\":\"genesis\"}\n",
+            ),
+        });
+
+        // ── /.warp/runtime (ino 12) ──────────────────────────────────────────
+        nodes.insert(Ino(12), VirtualNode {
+            ino: Ino(12),
+            parent_ino: Ino(10),
+            kind: NodeKind::RegularFile,
+            content: NodeContent::Bytes(
+                b"{\"kind\":\"in-memory\",\
+                  \"driver\":\"warp-drive-driver-memory\",\
+                  \"gate\":\"G1\"}\n",
+            ),
+        });
+
+        // ── /.warp/stats (ino 13) ────────────────────────────────────────────
+        // Static placeholder at G1. Live atomic counters arrive at G3.
+        nodes.insert(Ino(13), VirtualNode {
+            ino: Ino(13),
+            parent_ino: Ino(10),
+            kind: NodeKind::RegularFile,
+            content: NodeContent::Bytes(
+                b"{\
+                  \"gate\":\"G1\",\
+                  \"status\":\"static-placeholder\",\
+                  \"note\":\"live counters arrive at G3\",\
+                  \"lookup_count\":0,\
+                  \"getattr_count\":0,\
+                  \"readdir_count\":0,\
+                  \"open_count\":0,\
+                  \"read_count\":0,\
+                  \"readlink_count\":0\
+                  }\n",
+            ),
+        });
+
+        // ── /.warp/ (ino 10) ─────────────────────────────────────────────────
+        nodes.insert(Ino(10), VirtualNode {
+            ino: Ino(10),
+            parent_ino: ROOT_INO,
+            kind: NodeKind::Directory,
+            content: NodeContent::Children(vec![
+                (Ino(11), b"coordinate"),
+                (Ino(12), b"runtime"),
+                (Ino(13), b"stats"),
+            ]),
+        });
+
+        // ── / (ino 1) ────────────────────────────────────────────────────────
+        nodes.insert(ROOT_INO, VirtualNode {
+            ino: ROOT_INO,
+            parent_ino: ROOT_INO,
+            kind: NodeKind::Directory,
+            content: NodeContent::Children(vec![
+                (Ino(2),  b"README.md"),
+                (Ino(3),  b"package.json"),
+                (Ino(4),  b"src"),
+                (Ino(7),  b"empty"),
+                (Ino(8),  b"links"),
+                (Ino(10), b".warp"),
+            ]),
+        });
+
+        Self { nodes }
+    }
+
+    /// Look up a child of `parent` by raw name bytes.
+    ///
+    /// Returns `None` if `parent` does not exist, is not a directory, or has
+    /// no child with the given name.
+    #[must_use]
+    pub fn lookup(&self, parent: Ino, name: &[u8]) -> Option<&VirtualNode> {
+        let parent_node = self.nodes.get(&parent)?;
+        let NodeContent::Children(children) = &parent_node.content else {
+            return None;
+        };
+        for (child_ino, child_name) in children {
+            if *child_name == name {
+                return self.nodes.get(child_ino);
+            }
+        }
+        None
+    }
+
+    /// Get a node by inode number.
+    #[must_use]
+    pub fn get(&self, ino: Ino) -> Option<&VirtualNode> {
+        self.nodes.get(&ino)
+    }
+
+    /// Return the ordered child entries of a directory node.
+    ///
+    /// Each entry is `(child_ino, name_bytes)`. Returns `None` if `ino` does
+    /// not exist or is not a directory.
+    #[must_use]
+    pub fn readdir_entries(&self, ino: Ino) -> Option<&[(Ino, &'static [u8])]> {
+        match &self.nodes.get(&ino)?.content {
+            NodeContent::Children(c) => Some(c),
+            _ => None,
+        }
+    }
+}
+
+impl Default for FixtureTree {
+    fn default() -> Self {
+        Self::new()
+    }
+}

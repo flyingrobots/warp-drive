@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+# © James Ross Ω FLYING•ROBOTS <https://github.com/flyingrobots>
+[package]
+name         = "warp-drive-core"
+version      = "0.0.1"
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+repository   = { workspace = true }
+description  = "Domain types and G1 fixture tree for WARP DRIVE"
+publish      = false
+
+[lints]
+workspace = true
+
+[dependencies]

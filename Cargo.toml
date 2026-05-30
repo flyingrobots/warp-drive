@@ -2,6 +2,8 @@
 # © James Ross Ω FLYING•ROBOTS <https://github.com/flyingrobots>
 [workspace]
 members = [
+    "crates/warp-drive-core",
+    "crates/warp-drive-fuse",
     "crates/warp-drive-g0-spike",
 ]
 resolver = "2"
@@ -9,8 +11,8 @@ resolver = "2"
 [workspace.package]
 license     = "Apache-2.0"
 repository  = "https://github.com/flyingrobots/warp-drive"
-rust-version = "1.90.0"
-edition     = "2024"
+rust-version = "1.85.0"
+edition     = "2021"
 
 # Path dependencies into the echo worktree (feat/warp-drive-g1).
 # Uses ../echo-warp-drive so WARP DRIVE work is isolated from other agents
@@ -18,3 +20,41 @@ edition     = "2024"
 [workspace.dependencies]
 echo-wasm-abi = { path = "../echo-warp-drive/crates/echo-wasm-abi" }
 warp-wasm     = { path = "../echo-warp-drive/crates/warp-wasm" }
+
+warp-drive-core = { path = "crates/warp-drive-core" }
+
+clap               = { version = "4",    features = ["derive"] }
+# macos-no-mount: compile without macFUSE installed. Mounting still fails at
+# runtime on macOS until macFUSE is installed (`brew install --cask macfuse`).
+# Remove this feature flag after installing macFUSE.
+fuser              = { version = "0.17", features = ["macos-no-mount"] }
+libc               = "0.2"
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ── Workspace-wide lint policy (see docs/ENGINEERING_STANDARDS.md §2) ──────
+[workspace.lints.rust]
+warnings        = "deny"
+missing_docs    = "deny"
+unsafe_code     = "forbid"
+unused_must_use = "deny"
+unreachable_pub = "deny"
+
+[workspace.lints.clippy]
+# Groups at priority -1 so that individual lint overrides below take precedence.
+all              = { level = "deny", priority = -1 }
+pedantic         = { level = "deny", priority = -1 }
+nursery          = { level = "deny", priority = -1 }
+unwrap_used      = "deny"
+expect_used      = "deny"
+panic            = "deny"
+todo             = "deny"
+unimplemented    = "deny"
+dbg_macro        = "deny"
+print_stdout     = "deny"
+print_stderr     = "deny"
+wildcard_imports = "deny"
+enum_glob_use    = "deny"
+# multiple_crate_versions fires on transitive dep duplication we don't control;
+# use `cargo deny` instead for supply-chain checks.
+multiple_crate_versions = "allow"
