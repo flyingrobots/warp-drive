@@ -395,7 +395,8 @@ Here is the layering:
 ┌──────────────────────────────────────────────────────────────┐
 │  Any Continuum-speaking runtime                              │
 │                                                              │
-│  - Echo (deterministic in-process WASM kernel)               │
+│  - Echo (deterministic in-process kernel; v0.0.1 embeds via   │
+│    native Rust rlib — see docs/gates/G0.md)                  │
 │  - git-warp (Git objects as causal substrate)                │
 │  - postgres-warp (hypothetical SQL-hosted runtime)           │
 │  - s3-warp (hypothetical object-store runtime)               │
@@ -420,7 +421,7 @@ flowchart TD
         R5[Receipt → POSIX errno]
     end
     subgraph Runtimes["Continuum-speaking Runtimes"]
-        RT1[Echo<br />deterministic WASM kernel]
+        RT1[Echo<br />native rlib embedding<br/>v0.0.1 — see gates/G0.md]
         RT2[git-warp<br />Git objects as substrate]
         RT3[postgres-warp<br />hypothetical SQL runtime]
         RT4[in-memory<br />dev runtime for tests]
@@ -1475,7 +1476,7 @@ classDiagram
     }
     class EchoDriver {
         <<warp-drive-driver-echo>>
-        -EmbeddedEcho instance
+        -EmbeddedEcho rlib_handle
         +runtime_info() RuntimeInfo
         +observe(ObservationRequest) Hologram
         +submit_intent(Intent) Receipt
@@ -1509,9 +1510,12 @@ classDiagram
 
 ### 14.2 What a driver implementation looks like
 
-The Echo driver wraps Echo's existing WASM kernel ABI (LE binary EINT
-envelopes, observation requests, suffix admission). About 500-800 lines
-of Rust to implement the full trait against Echo.
+The Echo driver wraps the `warp-wasm` native rlib surface for v0.0.1:
+`init_embedded()` initializes the kernel; `observe_cbor()` handles
+observation requests over CBOR. The wasm32-unknown-unknown build uses
+wasm-bindgen ABI and is not the embedding target (see `docs/gates/G0.md`).
+About 300-500 lines of Rust to implement the full trait against Echo's
+rlib surface.
 
 The git-warp driver wraps git-warp's Git-object-backed history. Frontiers
 are commits; suffixes are trees of proposed objects; admission is a
