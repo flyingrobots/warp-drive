@@ -12,8 +12,8 @@ resolver = "2"
 [workspace.package]
 license     = "Apache-2.0"
 repository  = "https://github.com/flyingrobots/warp-drive"
-rust-version = "1.85.0"
-edition     = "2021"
+rust-version = "1.90.0"
+edition     = "2024"
 
 # Path dependencies into the echo worktree (feat/warp-drive-g1).
 # Uses ../echo-warp-drive so WARP DRIVE work is isolated from other agents
