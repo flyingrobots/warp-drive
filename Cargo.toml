@@ -42,15 +42,19 @@ unused_must_use = "deny"
 unreachable_pub = "deny"
 
 [workspace.lints.clippy]
-# Groups at priority -1 so that individual lint overrides below take precedence.
+# `all` covers correctness, suspicious, style, complexity, perf.
+# `pedantic` and `nursery` are intentionally omitted — they generate more
+# noise than signal at this stage and conflict with each other (e.g.
+# `redundant_pub_crate` vs `unreachable_pub`). Add targeted overrides below
+# for the safety properties we actually care about.
 all              = { level = "deny", priority = -1 }
-pedantic         = { level = "deny", priority = -1 }
-nursery          = { level = "deny", priority = -1 }
+# Safety / correctness
 unwrap_used      = "deny"
 expect_used      = "deny"
 panic            = "deny"
 todo             = "deny"
 unimplemented    = "deny"
+# Hygiene
 dbg_macro        = "deny"
 print_stdout     = "deny"
 print_stderr     = "deny"
