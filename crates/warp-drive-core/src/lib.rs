@@ -13,6 +13,8 @@
 //! **Introduced at:** G1.
 
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt;
 
 /// A stable inode number.
 ///
@@ -38,12 +40,12 @@ pub enum NodeKind {
 
 /// Content payload for a virtual node.
 pub enum NodeContent {
-    /// Static byte content (regular files).
-    Bytes(&'static [u8]),
+    /// Byte content (regular files). Owned to allow dynamic content at G2+.
+    Bytes(Vec<u8>),
     /// Named children of a directory: `(child_ino, name_bytes)`.
-    Children(Vec<(Ino, &'static [u8])>),
+    Children(Vec<(Ino, Vec<u8>)>),
     /// Symlink target as raw bytes (not assumed to be UTF-8).
-    Link(&'static [u8]),
+    Link(Vec<u8>),
 }
 
 /// A single node in the virtual filesystem.
@@ -64,7 +66,7 @@ impl VirtualNode {
     /// For directories this returns `0`; FUSE computes directory size from
     /// the kernel's readdir results, not from a size field.
     #[must_use]
-    pub const fn size(&self) -> u64 {
+    pub fn size(&self) -> u64 {
         match &self.content {
             NodeContent::Bytes(b) => b.len() as u64,
             NodeContent::Children(_) => 0,
@@ -96,6 +98,30 @@ pub struct FixtureTree {
     nodes: HashMap<Ino, VirtualNode>,
 }
 
+/// Errors produced while constructing fixed fixture variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FixtureTreeError {
+    /// A required metadata inode is missing from the hardcoded fixture.
+    MissingMetadataInode(Ino),
+    /// A required metadata inode exists but is not a regular file.
+    MetadataInodeNotFile(Ino),
+}
+
+impl fmt::Display for FixtureTreeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingMetadataInode(ino) => {
+                write!(f, "fixture metadata inode {} is missing", ino.0)
+            }
+            Self::MetadataInodeNotFile(ino) => {
+                write!(f, "fixture metadata inode {} is not a regular file", ino.0)
+            }
+        }
+    }
+}
+
+impl Error for FixtureTreeError {}
+
 impl FixtureTree {
     /// Construct the hardcoded G1 fixture tree.
     ///
@@ -110,118 +136,154 @@ impl FixtureTree {
         let mut nodes: HashMap<Ino, VirtualNode> = HashMap::new();
 
         // ── /README.md (ino 2) ───────────────────────────────────────────────
-        nodes.insert(Ino(2), VirtualNode {
-            ino: Ino(2),
-            parent_ino: ROOT_INO,
-            kind: NodeKind::RegularFile,
-            content: NodeContent::Bytes(
-                b"# WARP DRIVE G1 Fixture\n\
-                  A minimal fake tree for proving the POSIX translation layer.\n",
-            ),
-        });
+        nodes.insert(
+            Ino(2),
+            VirtualNode {
+                ino: Ino(2),
+                parent_ino: ROOT_INO,
+                kind: NodeKind::RegularFile,
+                content: NodeContent::Bytes(
+                    b"# WARP DRIVE G1 Fixture\n\
+                  A minimal fake tree for proving the POSIX translation layer.\n"
+                        .to_vec(),
+                ),
+            },
+        );
 
         // ── /package.json (ino 3) ────────────────────────────────────────────
-        nodes.insert(Ino(3), VirtualNode {
-            ino: Ino(3),
-            parent_ino: ROOT_INO,
-            kind: NodeKind::RegularFile,
-            content: NodeContent::Bytes(
-                b"{\n  \"name\": \"warp-drive-g1\",\n  \"version\": \"0.0.1\"\n}\n",
-            ),
-        });
+        nodes.insert(
+            Ino(3),
+            VirtualNode {
+                ino: Ino(3),
+                parent_ino: ROOT_INO,
+                kind: NodeKind::RegularFile,
+                content: NodeContent::Bytes(
+                    b"{\n  \"name\": \"warp-drive-g1\",\n  \"version\": \"0.0.1\"\n}\n".to_vec(),
+                ),
+            },
+        );
 
         // ── /src/main.ts (ino 5) ─────────────────────────────────────────────
-        nodes.insert(Ino(5), VirtualNode {
-            ino: Ino(5),
-            parent_ino: Ino(4),
-            kind: NodeKind::RegularFile,
-            content: NodeContent::Bytes(
-                b"export function main(): void {\n\
+        nodes.insert(
+            Ino(5),
+            VirtualNode {
+                ino: Ino(5),
+                parent_ino: Ino(4),
+                kind: NodeKind::RegularFile,
+                content: NodeContent::Bytes(
+                    b"export function main(): void {\n\
                   \x20\x20console.log(\"hello from warp-drive G1 fixture\");\n\
-                  }\n",
-            ),
-        });
+                  }\n"
+                    .to_vec(),
+                ),
+            },
+        );
 
         // ── /src/lib.ts (ino 6) ──────────────────────────────────────────────
-        nodes.insert(Ino(6), VirtualNode {
-            ino: Ino(6),
-            parent_ino: Ino(4),
-            kind: NodeKind::RegularFile,
-            content: NodeContent::Bytes(
-                b"export function identity<T>(x: T): T {\n\
+        nodes.insert(
+            Ino(6),
+            VirtualNode {
+                ino: Ino(6),
+                parent_ino: Ino(4),
+                kind: NodeKind::RegularFile,
+                content: NodeContent::Bytes(
+                    b"export function identity<T>(x: T): T {\n\
                   \x20\x20return x;\n\
-                  }\n",
-            ),
-        });
+                  }\n"
+                    .to_vec(),
+                ),
+            },
+        );
 
         // ── /src/ (ino 4) ────────────────────────────────────────────────────
-        nodes.insert(Ino(4), VirtualNode {
-            ino: Ino(4),
-            parent_ino: ROOT_INO,
-            kind: NodeKind::Directory,
-            content: NodeContent::Children(vec![
-                (Ino(5), b"main.ts"),
-                (Ino(6), b"lib.ts"),
-            ]),
-        });
+        nodes.insert(
+            Ino(4),
+            VirtualNode {
+                ino: Ino(4),
+                parent_ino: ROOT_INO,
+                kind: NodeKind::Directory,
+                content: NodeContent::Children(vec![
+                    (Ino(5), b"main.ts".to_vec()),
+                    (Ino(6), b"lib.ts".to_vec()),
+                ]),
+            },
+        );
 
         // ── /empty/ (ino 7) ──────────────────────────────────────────────────
-        nodes.insert(Ino(7), VirtualNode {
-            ino: Ino(7),
-            parent_ino: ROOT_INO,
-            kind: NodeKind::Directory,
-            content: NodeContent::Children(vec![]),
-        });
+        nodes.insert(
+            Ino(7),
+            VirtualNode {
+                ino: Ino(7),
+                parent_ino: ROOT_INO,
+                kind: NodeKind::Directory,
+                content: NodeContent::Children(vec![]),
+            },
+        );
 
         // ── /links/readme (ino 9, symlink → ../README.md) ────────────────────
-        nodes.insert(Ino(9), VirtualNode {
-            ino: Ino(9),
-            parent_ino: Ino(8),
-            kind: NodeKind::Symlink,
-            content: NodeContent::Link(b"../README.md"),
-        });
+        nodes.insert(
+            Ino(9),
+            VirtualNode {
+                ino: Ino(9),
+                parent_ino: Ino(8),
+                kind: NodeKind::Symlink,
+                content: NodeContent::Link(b"../README.md".to_vec()),
+            },
+        );
 
         // ── /links/ (ino 8) ──────────────────────────────────────────────────
-        nodes.insert(Ino(8), VirtualNode {
-            ino: Ino(8),
-            parent_ino: ROOT_INO,
-            kind: NodeKind::Directory,
-            content: NodeContent::Children(vec![
-                (Ino(9), b"readme"),
-            ]),
-        });
+        nodes.insert(
+            Ino(8),
+            VirtualNode {
+                ino: Ino(8),
+                parent_ino: ROOT_INO,
+                kind: NodeKind::Directory,
+                content: NodeContent::Children(vec![(Ino(9), b"readme".to_vec())]),
+            },
+        );
 
         // ── /.warp/coordinate (ino 11) ───────────────────────────────────────
-        nodes.insert(Ino(11), VirtualNode {
-            ino: Ino(11),
-            parent_ino: Ino(10),
-            kind: NodeKind::RegularFile,
-            content: NodeContent::Bytes(
-                b"{\"worldline\":\"00000000-0000-0000-0000-000000000001\",\
-                  \"frontier\":\"genesis\"}\n",
-            ),
-        });
+        nodes.insert(
+            Ino(11),
+            VirtualNode {
+                ino: Ino(11),
+                parent_ino: Ino(10),
+                kind: NodeKind::RegularFile,
+                content: NodeContent::Bytes(
+                    b"{\"worldline\":\"00000000-0000-0000-0000-000000000001\",\
+                  \"frontier\":\"genesis\",\
+                  \"gate\":\"G1\"}\n"
+                        .to_vec(),
+                ),
+            },
+        );
 
         // ── /.warp/runtime (ino 12) ──────────────────────────────────────────
-        nodes.insert(Ino(12), VirtualNode {
-            ino: Ino(12),
-            parent_ino: Ino(10),
-            kind: NodeKind::RegularFile,
-            content: NodeContent::Bytes(
-                b"{\"kind\":\"in-memory\",\
+        nodes.insert(
+            Ino(12),
+            VirtualNode {
+                ino: Ino(12),
+                parent_ino: Ino(10),
+                kind: NodeKind::RegularFile,
+                content: NodeContent::Bytes(
+                    b"{\"kind\":\"in-memory\",\
                   \"driver\":\"warp-drive-driver-memory\",\
-                  \"gate\":\"G1\"}\n",
-            ),
-        });
+                  \"gate\":\"G1\"}\n"
+                        .to_vec(),
+                ),
+            },
+        );
 
         // ── /.warp/stats (ino 13) ────────────────────────────────────────────
         // Static placeholder at G1. Live atomic counters arrive at G3.
-        nodes.insert(Ino(13), VirtualNode {
-            ino: Ino(13),
-            parent_ino: Ino(10),
-            kind: NodeKind::RegularFile,
-            content: NodeContent::Bytes(
-                b"{\
+        nodes.insert(
+            Ino(13),
+            VirtualNode {
+                ino: Ino(13),
+                parent_ino: Ino(10),
+                kind: NodeKind::RegularFile,
+                content: NodeContent::Bytes(
+                    b"{\
                   \"gate\":\"G1\",\
                   \"status\":\"static-placeholder\",\
                   \"note\":\"live counters arrive at G3\",\
@@ -231,38 +293,67 @@ impl FixtureTree {
                   \"open_count\":0,\
                   \"read_count\":0,\
                   \"readlink_count\":0\
-                  }\n",
-            ),
-        });
+                  }\n"
+                    .to_vec(),
+                ),
+            },
+        );
 
         // ── /.warp/ (ino 10) ─────────────────────────────────────────────────
-        nodes.insert(Ino(10), VirtualNode {
-            ino: Ino(10),
-            parent_ino: ROOT_INO,
-            kind: NodeKind::Directory,
-            content: NodeContent::Children(vec![
-                (Ino(11), b"coordinate"),
-                (Ino(12), b"runtime"),
-                (Ino(13), b"stats"),
-            ]),
-        });
+        nodes.insert(
+            Ino(10),
+            VirtualNode {
+                ino: Ino(10),
+                parent_ino: ROOT_INO,
+                kind: NodeKind::Directory,
+                content: NodeContent::Children(vec![
+                    (Ino(11), b"coordinate".to_vec()),
+                    (Ino(12), b"runtime".to_vec()),
+                    (Ino(13), b"stats".to_vec()),
+                ]),
+            },
+        );
 
         // ── / (ino 1) ────────────────────────────────────────────────────────
-        nodes.insert(ROOT_INO, VirtualNode {
-            ino: ROOT_INO,
-            parent_ino: ROOT_INO,
-            kind: NodeKind::Directory,
-            content: NodeContent::Children(vec![
-                (Ino(2),  b"README.md"),
-                (Ino(3),  b"package.json"),
-                (Ino(4),  b"src"),
-                (Ino(7),  b"empty"),
-                (Ino(8),  b"links"),
-                (Ino(10), b".warp"),
-            ]),
-        });
+        nodes.insert(
+            ROOT_INO,
+            VirtualNode {
+                ino: ROOT_INO,
+                parent_ino: ROOT_INO,
+                kind: NodeKind::Directory,
+                content: NodeContent::Children(vec![
+                    (Ino(2), b"README.md".to_vec()),
+                    (Ino(3), b"package.json".to_vec()),
+                    (Ino(4), b"src".to_vec()),
+                    (Ino(7), b"empty".to_vec()),
+                    (Ino(8), b"links".to_vec()),
+                    (Ino(10), b".warp".to_vec()),
+                ]),
+            },
+        );
 
         Self { nodes }
+    }
+
+    /// Construct the G1 fixture tree with caller-provided `.warp/` file bytes.
+    ///
+    /// This is the G2a bridge: the POSIX tree stays seeded from the G1 fixture,
+    /// while runtime metadata files can be produced by an external backend.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FixtureTreeError`] if the hardcoded `.warp/` metadata inodes
+    /// are missing or no longer point at regular files.
+    pub fn with_warp_metadata(
+        coordinate: Vec<u8>,
+        runtime: Vec<u8>,
+        stats: Vec<u8>,
+    ) -> Result<Self, FixtureTreeError> {
+        let mut tree = Self::new();
+        tree.replace_file_bytes(Ino(11), coordinate)?;
+        tree.replace_file_bytes(Ino(12), runtime)?;
+        tree.replace_file_bytes(Ino(13), stats)?;
+        Ok(tree)
     }
 
     /// Look up a child of `parent` by raw name bytes.
@@ -294,11 +385,25 @@ impl FixtureTree {
     /// Each entry is `(child_ino, name_bytes)`. Returns `None` if `ino` does
     /// not exist or is not a directory.
     #[must_use]
-    pub fn readdir_entries(&self, ino: Ino) -> Option<&[(Ino, &'static [u8])]> {
+    pub fn readdir_entries(&self, ino: Ino) -> Option<impl Iterator<Item = (Ino, &[u8])> + '_> {
         match &self.nodes.get(&ino)?.content {
-            NodeContent::Children(c) => Some(c),
+            NodeContent::Children(c) => Some(
+                c.iter()
+                    .map(|(child_ino, name)| (*child_ino, name.as_slice())),
+            ),
             _ => None,
         }
+    }
+
+    fn replace_file_bytes(&mut self, ino: Ino, bytes: Vec<u8>) -> Result<(), FixtureTreeError> {
+        let Some(node) = self.nodes.get_mut(&ino) else {
+            return Err(FixtureTreeError::MissingMetadataInode(ino));
+        };
+        if node.kind != NodeKind::RegularFile {
+            return Err(FixtureTreeError::MetadataInodeNotFile(ino));
+        }
+        node.content = NodeContent::Bytes(bytes);
+        Ok(())
     }
 }
 

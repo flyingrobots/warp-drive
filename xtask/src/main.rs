@@ -10,11 +10,12 @@
 //! | `install-deps` | Install macFUSE via Homebrew (macOS only, no-op elsewhere)|
 //! | `mount`        | Build and mount the WARP DRIVE FUSE filesystem            |
 //! | `unmount`      | Unmount the WARP DRIVE FUSE filesystem                    |
-//! | `acceptance`   | Build Docker image and run the G1 gate acceptance test    |
+//! | `acceptance`   | Run the selected gate acceptance test                     |
 
 // xtask is a developer CLI — printing to stdout/stderr is intentional.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
+use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
@@ -46,6 +47,10 @@ enum Task {
         /// Existing directory to use as the mount point.
         #[arg(long, short)]
         path: PathBuf,
+
+        /// Runtime back-end to mount.
+        #[arg(long, value_enum, default_value = "in-memory")]
+        runtime: Runtime,
     },
 
     /// Unmount the WARP DRIVE FUSE filesystem.
@@ -55,25 +60,41 @@ enum Task {
         path: PathBuf,
     },
 
-    /// Build the Docker acceptance image and run the G1 gate test.
+    /// Run the selected acceptance test.
     ///
-    /// Equivalent to:
+    /// For `in-memory`, equivalent to:
     ///   docker build -t warp-drive-g1 .
-    ///   docker run --rm --device /dev/fuse --cap-add SYS_ADMIN warp-drive-g1
+    ///   docker run --rm --device /dev/fuse --cap-add SYS_ADMIN \
+    ///     --security-opt apparmor=unconfined warp-drive-g1
     Acceptance {
         /// Docker image tag to use.
         #[arg(long, default_value = "warp-drive-g1")]
         tag: String,
+
+        /// Runtime back-end to test.
+        #[arg(long, value_enum, default_value = "in-memory")]
+        runtime: Runtime,
     },
+}
+
+/// Runtime back-ends known to developer tasks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum Runtime {
+    /// Hardcoded in-memory fixture tree. G1 gate target.
+    #[value(name = "in-memory")]
+    InMemory,
+    /// Embedded Echo rlib coordinate metadata over G1 fixture bytes. G2a target.
+    #[value(name = "echo-rlib")]
+    EchoRlib,
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
         Task::InstallDeps => install_deps(),
-        Task::Mount { path } => mount(&path),
+        Task::Mount { path, runtime } => mount(&path, runtime),
         Task::Unmount { path } => unmount(&path),
-        Task::Acceptance { tag } => acceptance(&tag),
+        Task::Acceptance { tag, runtime } => acceptance(&tag, runtime),
     };
 
     match result {
@@ -105,13 +126,41 @@ fn install_deps_impl() -> Result<(), String> {
 
 // ── mount ────────────────────────────────────────────────────────────────────
 
-fn mount(path: &Path) -> Result<(), String> {
+fn mount(path: &Path, runtime: Runtime) -> Result<(), String> {
     let p = path_str(path)?;
-    println!("Mounting WARP DRIVE at {p} (blocks until unmounted — Ctrl-C to stop)...");
-    run(
-        "cargo",
-        &["run", "--package", "warp-drive-fuse", "--", "--mount", p],
-    )
+    println!(
+        "Mounting WARP DRIVE at {p} with {runtime:?} (blocks until unmounted — Ctrl-C to stop)..."
+    );
+    match runtime {
+        Runtime::InMemory => run(
+            "cargo",
+            &[
+                "run",
+                "--package",
+                "warp-drive-fuse",
+                "--",
+                "--runtime",
+                "in-memory",
+                "--mount",
+                p,
+            ],
+        ),
+        Runtime::EchoRlib => run(
+            "cargo",
+            &[
+                "run",
+                "--manifest-path",
+                "crates/warp-drive-fuse-echo/Cargo.toml",
+                "--target-dir",
+                "target/echo-rlib",
+                "--",
+                "--runtime",
+                "echo-rlib",
+                "--mount",
+                p,
+            ],
+        ),
+    }
 }
 
 // ── unmount ──────────────────────────────────────────────────────────────────
@@ -142,19 +191,53 @@ fn unmount_impl(_path: &Path) -> Result<(), String> {
 
 // ── acceptance ───────────────────────────────────────────────────────────────
 
-fn acceptance(tag: &str) -> Result<(), String> {
+fn acceptance(tag: &str, runtime: Runtime) -> Result<(), String> {
+    match runtime {
+        Runtime::InMemory => acceptance_in_memory(tag),
+        Runtime::EchoRlib => acceptance_echo_rlib(),
+    }
+}
+
+fn acceptance_in_memory(tag: &str) -> Result<(), String> {
     println!("Building Docker image `{tag}`...");
     run("docker", &["build", "-t", tag, "."])?;
     println!("Running G1 acceptance test in Docker...");
     run(
         "docker",
         &[
-            "run", "--rm",
-            "--device", "/dev/fuse",
-            "--cap-add", "SYS_ADMIN",
+            "run",
+            "--rm",
+            "--device",
+            "/dev/fuse",
+            "--cap-add",
+            "SYS_ADMIN",
+            "--security-opt",
+            "apparmor=unconfined",
             tag,
         ],
     )
+}
+
+fn acceptance_echo_rlib() -> Result<(), String> {
+    println!("Building local-only warp-drive-fuse Echo binary...");
+    run(
+        "cargo",
+        &[
+            "build",
+            "--manifest-path",
+            "crates/warp-drive-fuse-echo/Cargo.toml",
+            "--target-dir",
+            "target/echo-rlib",
+        ],
+    )?;
+    println!("Running G2a echo-rlib acceptance script...");
+    let target_debug = env::current_dir()
+        .map_err(|e| format!("failed to read current directory: {e}"))?
+        .join("target")
+        .join("echo-rlib")
+        .join("debug");
+    let path = prepend_path(target_debug)?;
+    run_with_path("scripts/acceptance-g2.sh", &[], &path)
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -179,4 +262,26 @@ fn run(program: &str, args: &[&str]) -> Result<(), String> {
 
     let code = status.code().unwrap_or(-1);
     Err(format!("`{program}` exited with status {code}"))
+}
+
+fn run_with_path(program: &str, args: &[&str], path: &std::ffi::OsStr) -> Result<(), String> {
+    let status = Command::new(program)
+        .args(args)
+        .env("PATH", path)
+        .status()
+        .map_err(|e| format!("failed to spawn `{program}`: {e}"))?;
+
+    if status.success() {
+        return Ok(());
+    }
+
+    let code = status.code().unwrap_or(-1);
+    Err(format!("`{program}` exited with status {code}"))
+}
+
+fn prepend_path(first: PathBuf) -> Result<std::ffi::OsString, String> {
+    let existing = env::var_os("PATH").unwrap_or_default();
+    let mut paths = vec![first];
+    paths.extend(env::split_paths(&existing));
+    env::join_paths(paths).map_err(|e| format!("failed to build PATH: {e}"))
 }

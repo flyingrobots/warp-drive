@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // © James Ross Ω FLYING•ROBOTS <https://github.com/flyingrobots>
 
-//! WARP DRIVE FUSE mount binary (G1 gate: in-memory fake tree).
+//! WARP DRIVE FUSE mount binary (G1 in-memory gate runner).
 //!
-//! Mounts a read-only POSIX filesystem backed by the hardcoded G1 fixture tree
-//! from `warp-drive-core`. Implements the 7 syscalls required by the G1
-//! acceptance script: LOOKUP, GETATTR, READDIR, OPEN, READ, READLINK, RELEASE.
+//! Mounts a read-only POSIX filesystem backed by a cached [`FixtureTree`].
+//! Implements the 7 syscalls required by the gate acceptance scripts: LOOKUP,
+//! GETATTR, READDIR, OPEN, READ, READLINK, RELEASE.
+//!
+//! G2a Echo metadata acceptance uses the excluded `warp-drive-fuse-echo`
+//! binary through `cargo xtask acceptance --runtime echo-rlib`.
 //!
 //! **Layer:** platform (FUSE binary; wraps `warp-drive-core` fixture tree).
 //!
@@ -17,14 +20,10 @@
 //!   Until macFUSE is installed the binary compiles (with the
 //!   `compile-without-macfuse` feature) but `mount2` returns an error.
 
-mod adapter;
-
 use std::path::PathBuf;
 
 use clap::Parser;
 use warp_drive_core::FixtureTree;
-
-use crate::adapter::FuseAdapter;
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
 
@@ -36,9 +35,9 @@ enum Runtime {
     InMemory,
 }
 
-/// WARP DRIVE FUSE mount (G1: in-memory fake tree).
+/// WARP DRIVE FUSE mount.
 ///
-/// Mounts a read-only POSIX filesystem backed by a hardcoded fixture tree.
+/// Mounts a read-only POSIX filesystem backed by the selected runtime.
 /// Unmount with `cargo xtask unmount --path <dir>` (or `umount` / `fusermount -u`).
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
@@ -47,7 +46,7 @@ struct Cli {
     #[arg(long)]
     mount: PathBuf,
 
-    /// Runtime back-end (`in-memory` is the only option at G1).
+    /// Runtime back-end.
     #[arg(long, value_enum, default_value = "in-memory")]
     runtime: Runtime,
 }
@@ -58,18 +57,21 @@ fn main() -> std::io::Result<()> {
         .init();
 
     let cli = Cli::parse();
-    tracing::info!(mount = %cli.mount.display(), "WARP DRIVE G1 mounting");
+    tracing::info!(
+        mount = %cli.mount.display(),
+        runtime = ?cli.runtime,
+        "WARP DRIVE mounting"
+    );
+    let tree = fixture_tree(cli.runtime)?;
 
-    let mut config = fuser::Config::default();
-    config.mount_options = vec![
-        fuser::MountOption::RO,
-        fuser::MountOption::FSName("warp-drive".to_owned()),
-        fuser::MountOption::Subtype("warp-drive".to_owned()),
-        fuser::MountOption::DefaultPermissions,
-    ];
-
-    fuser::mount2(FuseAdapter::new(FixtureTree::new()), &cli.mount, &config)?;
+    warp_drive_fuse::mount_tree(tree, &cli.mount)?;
 
     tracing::info!("unmounted");
     Ok(())
+}
+
+fn fixture_tree(runtime: Runtime) -> std::io::Result<FixtureTree> {
+    match runtime {
+        Runtime::InMemory => Ok(FixtureTree::new()),
+    }
 }

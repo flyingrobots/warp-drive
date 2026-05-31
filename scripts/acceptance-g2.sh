@@ -2,17 +2,25 @@
 # SPDX-License-Identifier: Apache-2.0
 # © James Ross Ω FLYING•ROBOTS <https://github.com/flyingrobots>
 #
-# G1 gate acceptance test.
-# Mounts the in-memory fixture tree and verifies POSIX read semantics and
-# write rejection.
+# G2a gate acceptance test.
+# Mounts the echo-rlib backend and verifies:
+#   - G1 read assertions still pass (same file tree)
+#   - /.warp/coordinate contains a real Echo worldline UUID (not genesis placeholder)
+#   - /.warp/coordinate contains non-zero 64-char hex frontier/state_root/artifact_hash values
+#   - /.warp/runtime identifies the echo-rlib backend
 #
-# Linux-only. Uses GNU stat, fusermount3, and /dev/fuse.
-# Usage: cargo xtask acceptance
-# Direct: docker run --rm --device /dev/fuse --cap-add SYS_ADMIN \
-#   --security-opt apparmor=unconfined warp-drive-g1
+# Linux-only. Requires the local Echo-capable warp-drive-fuse binary.
+# Usage: cargo xtask acceptance --runtime echo-rlib
 set -euo pipefail
 
-MOUNT=/tmp/warp-g1
+MOUNT=${WARP_DRIVE_ACCEPTANCE_MOUNT:-}
+MOUNT_CREATED=0
+if [ -z "$MOUNT" ]; then
+    MOUNT=$(mktemp -d "${TMPDIR:-/tmp}/warp-g2.XXXXXX")
+    MOUNT_CREATED=1
+else
+    mkdir -p "$MOUNT"
+fi
 PASS=0
 FAIL=0
 
@@ -53,22 +61,55 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local haystack="$1" needle="$2" label="$3"
+    if echo "$haystack" | grep -qF "$needle"; then
+        fail "$label" "(must not contain) $needle" "$haystack"
+    else
+        pass "$label"
+    fi
+}
+
+json_hex_value() {
+    local json="$1" key="$2"
+    echo "$json" | sed -n "s/.*\"$key\":\"\\([0-9a-f]*\\)\".*/\\1/p" | head -1
+}
+
+assert_nonzero_hex64() {
+    local value="$1" label="$2"
+    local zero="0000000000000000000000000000000000000000000000000000000000000000"
+    if echo "$value" | grep -Eq '^[0-9a-f]{64}$' && [ "$value" != "$zero" ]; then
+        pass "$label"
+    else
+        fail "$label" "non-zero 64-char hex" "$value"
+    fi
+}
+
+# ── Cleanup trap ──────────────────────────────────────────────────────────────
+# Ensures the FUSE mount is cleaned up even if a command fails mid-script.
+FUSE_PID=""
+cleanup() {
+    umount "$MOUNT" 2>/dev/null || fusermount3 -u "$MOUNT" 2>/dev/null || true
+    if [ -n "${FUSE_PID:-}" ]; then
+        kill "$FUSE_PID" 2>/dev/null || true
+        wait "$FUSE_PID" 2>/dev/null || true
+    fi
+    if [ "$MOUNT_CREATED" -eq 1 ]; then
+        rm -rf "$MOUNT"
+    fi
+}
+trap cleanup EXIT INT TERM
+
 # ── Mount ─────────────────────────────────────────────────────────────────────
 
-echo "=== WARP DRIVE G1 acceptance ==="
+echo "=== WARP DRIVE G2a acceptance ==="
 echo ""
-echo "Mounting at $MOUNT …"
+echo "Mounting at $MOUNT (echo-rlib backend) …"
 
 mkdir -p "$MOUNT"
-warp-drive-fuse --runtime=in-memory --mount "$MOUNT" &
+warp-drive-fuse --runtime=echo-rlib --mount "$MOUNT" &
 FUSE_PID=$!
 
-# Wait up to 5 s for the FUSE mount to appear.
-# We check that:
-#   (a) the fuse process is still alive, and
-#   (b) the mountpoint's filesystem type contains "fuse"
-# Checking only `ls` is insufficient — it succeeds on an empty directory
-# even when nothing is mounted.
 MOUNTED=0
 for i in $(seq 1 50); do
     if ! kill -0 "$FUSE_PID" 2>/dev/null; then
@@ -84,7 +125,6 @@ done
 
 if [ "$MOUNTED" -eq 0 ]; then
     red "ERROR: mount point did not become a FUSE filesystem within 5 s"
-    kill "$FUSE_PID" 2>/dev/null || true
     exit 1
 fi
 
@@ -119,27 +159,58 @@ assert_contains "$MAIN" "export function main" "src/main.ts export"
 LIB=$(cat "$MOUNT/src/lib.ts")
 assert_contains "$LIB" "export function identity" "src/lib.ts export"
 
-COORD=$(cat "$MOUNT/.warp/coordinate")
-assert_contains "$COORD" '"worldline"'  ".warp/coordinate has worldline"
-assert_contains "$COORD" '"frontier"'   ".warp/coordinate has frontier"
+# ── .warp/ surface ───────────────────────────────────────────────────────────
 
-RUNTIME=$(cat "$MOUNT/.warp/runtime")
-assert_contains "$RUNTIME" '"kind":"in-memory"' ".warp/runtime kind"
-assert_contains "$RUNTIME" '"gate":"G1"'        ".warp/runtime gate"
+COORD=$(cat "$MOUNT/.warp/coordinate")
+assert_contains "$COORD" '"worldline"'   ".warp/coordinate has worldline field"
+assert_contains "$COORD" '"frontier"'    ".warp/coordinate has frontier field"
+assert_contains "$COORD" '"state_root"'  ".warp/coordinate has state_root field"
+assert_contains "$COORD" '"artifact_hash"' ".warp/coordinate has artifact_hash field"
+assert_contains "$COORD" '"gate":"G2a"'  ".warp/coordinate identifies gate G2a"
+
+RUNTIME_JSON=$(cat "$MOUNT/.warp/runtime")
+assert_contains "$RUNTIME_JSON" '"kind":"echo-rlib"'  ".warp/runtime kind is echo-rlib"
+assert_contains "$RUNTIME_JSON" '"gate":"G2a"'         ".warp/runtime gate is G2a"
 
 STATS=$(cat "$MOUNT/.warp/stats")
-assert_contains "$STATS" '"gate":"G1"' ".warp/stats gate"
+assert_contains "$STATS" '"gate":"G2a"' ".warp/stats gate is G2a"
+
+# ── G2a-specific: real Echo coordinate ───────────────────────────────────────
+
+echo ""
+echo "── G2a coordinate assertions ───────────────────────────────────────────"
+
+# Worldline must not be the genesis placeholder from G1
+assert_not_contains "$COORD" \
+    '"worldline":"00000000-0000-0000-0000-000000000001"' \
+    ".warp/coordinate worldline is real (not genesis placeholder)"
+
+# Echo serializes the observed worldline as raw lowercase hex.
+WORLDLINE_VALUE=$(json_hex_value "$COORD" "worldline" || true)
+assert_nonzero_hex64 "$WORLDLINE_VALUE" ".warp/coordinate worldline is 64-char non-zero hex"
+
+# Coordinate hashes must be concrete, non-zero 32-byte hex values.
+FRONTIER_VALUE=$(json_hex_value "$COORD" "frontier" || true)
+STATE_ROOT_VALUE=$(json_hex_value "$COORD" "state_root" || true)
+ARTIFACT_HASH_VALUE=$(json_hex_value "$COORD" "artifact_hash" || true)
+assert_nonzero_hex64 "$FRONTIER_VALUE" ".warp/coordinate frontier is 64-char non-zero hex"
+assert_nonzero_hex64 "$STATE_ROOT_VALUE" ".warp/coordinate state_root is 64-char non-zero hex"
+assert_nonzero_hex64 "$ARTIFACT_HASH_VALUE" ".warp/coordinate artifact_hash is 64-char non-zero hex"
+
+# backend field must identify echo-rlib
+assert_contains "$COORD" '"backend":"echo-rlib"' \
+    ".warp/coordinate backend is echo-rlib"
 
 # ── find ──────────────────────────────────────────────────────────────────────
 
 echo ""
 echo "── find ────────────────────────────────────────────────────────────────"
 FIND_OUT=$(find "$MOUNT" | sort)
-assert_contains "$FIND_OUT" "src/main.ts"     "find sees src/main.ts"
-assert_contains "$FIND_OUT" "src/lib.ts"      "find sees src/lib.ts"
+assert_contains "$FIND_OUT" "src/main.ts"      "find sees src/main.ts"
+assert_contains "$FIND_OUT" "src/lib.ts"       "find sees src/lib.ts"
 assert_contains "$FIND_OUT" ".warp/coordinate" "find sees .warp/coordinate"
-assert_contains "$FIND_OUT" "empty"           "find sees empty/"
-assert_contains "$FIND_OUT" "links/readme"    "find sees links/readme"
+assert_contains "$FIND_OUT" "empty"            "find sees empty/"
+assert_contains "$FIND_OUT" "links/readme"     "find sees links/readme"
 
 # ── ripgrep ───────────────────────────────────────────────────────────────────
 
@@ -170,8 +241,6 @@ echo "── readlink ───────────────────�
 LINK_TARGET=$(readlink "$MOUNT/links/readme")
 assert_eq "$LINK_TARGET" "../README.md" "links/readme → ../README.md"
 
-# ── symlink resolution ────────────────────────────────────────────────────────
-
 LINK_CONTENT=$(cat "$MOUNT/links/readme")
 assert_contains "$LINK_CONTENT" "WARP DRIVE G1 Fixture" "symlink resolves to README.md"
 
@@ -191,23 +260,15 @@ else
     pass "create newfile.txt correctly rejected (EROFS)"
 fi
 
-# ── Unmount ───────────────────────────────────────────────────────────────────
-
-echo ""
-echo "Unmounting…"
-umount "$MOUNT" 2>/dev/null || fusermount3 -u "$MOUNT" 2>/dev/null || true
-wait "$FUSE_PID" 2>/dev/null || true
-echo "Unmounted."
-
 # ── Report ────────────────────────────────────────────────────────────────────
 
 echo ""
 echo "════════════════════════════════════════════"
 TOTAL=$((PASS + FAIL))
 if [ "$FAIL" -eq 0 ]; then
-    green "G1 GATE PASSED  ($PASS / $TOTAL assertions)"
+    green "G2a GATE PASSED  ($PASS / $TOTAL assertions)"
     exit 0
 else
-    red   "G1 GATE FAILED  ($FAIL failed, $PASS passed, $TOTAL total)"
+    red   "G2a GATE FAILED  ($FAIL failed, $PASS passed, $TOTAL total)"
     exit 1
 fi

@@ -15,9 +15,8 @@ use std::os::unix::ffi::OsStrExt;
 use std::time::{Duration, SystemTime};
 
 use fuser::{
-    Errno, FileAttr, FileHandle, FileType, FopenFlags, Generation, INodeNo,
-    LockOwner, OpenAccMode, OpenFlags, ReplyAttr, ReplyData, ReplyDirectory,
-    ReplyEntry, ReplyOpen, Request,
+    Errno, FileAttr, FileHandle, FileType, FopenFlags, Generation, INodeNo, LockOwner, OpenAccMode,
+    OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry, ReplyOpen, Request,
 };
 use warp_drive_core::{FixtureTree, Ino, NodeContent, NodeKind, VirtualNode};
 
@@ -52,7 +51,7 @@ const fn fuse_kind(kind: NodeKind) -> FileType {
 }
 
 /// Build a fuser [`FileAttr`] from a domain [`VirtualNode`].
-const fn node_attr(node: &VirtualNode) -> FileAttr {
+fn node_attr(node: &VirtualNode) -> FileAttr {
     let kind = fuse_kind(node.kind);
     let perm: u16 = match node.kind {
         NodeKind::Directory => 0o555,
@@ -184,8 +183,12 @@ impl fuser::Filesystem for FuseAdapter {
 
         // . (self)
         if idx >= skip {
-            let full =
-                reply.add(INodeNo(ino.0), next_offset(idx), FileType::Directory, OsStr::new("."));
+            let full = reply.add(
+                INodeNo(ino.0),
+                next_offset(idx),
+                FileType::Directory,
+                OsStr::new("."),
+            );
             if full {
                 reply.ok();
                 return;
@@ -213,10 +216,14 @@ impl fuser::Filesystem for FuseAdapter {
             if idx >= skip {
                 let kind = self
                     .tree
-                    .get(*child_ino)
+                    .get(child_ino)
                     .map_or(FileType::RegularFile, |n| fuse_kind(n.kind));
-                let full =
-                    reply.add(INodeNo(child_ino.0), next_offset(idx), kind, OsStr::from_bytes(child_name));
+                let full = reply.add(
+                    INodeNo(child_ino.0),
+                    next_offset(idx),
+                    kind,
+                    OsStr::from_bytes(child_name),
+                );
                 if full {
                     reply.ok();
                     return;
