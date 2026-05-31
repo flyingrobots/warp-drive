@@ -80,20 +80,20 @@ Each tier tests a different boundary:
 |-----------|--------|
 | `crates/warp-drive-core` | In-memory `FixtureTree` — 13 hardcoded nodes |
 | `crates/warp-drive-fuse` | FUSE binary — `adapter.rs` + `main.rs` |
-| `scripts/acceptance.sh` | 29-assertion shell script |
+| `scripts/acceptance.sh` | 29-assertion shell script (Linux / GNU userland) |
 | `cargo xtask acceptance` | Docker build + run, exits 0 on pass |
 | Gate G1 | **PASSED** (29/29 assertions, 2026-05-30) |
 
 ### What is missing
 
-- Unit tests: none. The fixture data and tree logic are mixed in one function
-  (`FixtureTree::new`), making targeted tests difficult.
+- Unit tests: none. Fixture data and tree logic are mixed in `FixtureTree::new`,
+  making targeted tests difficult.
 - Integration tests: none. No Rust-level FUSE mount/assert/unmount harness.
 - CI: none. No GitHub Actions workflow.
 - Fixtures crate: none. No separation between "the shape of a tree" and "the
   G1 acceptance fixture."
-- In-memory debug backend: none. Everything is static fixture data; there is
-  no backend abstraction yet.
+- In-memory debug backend: none. Everything is static fixture data; no backend
+  abstraction exists yet.
 
 ---
 
@@ -101,56 +101,46 @@ Each tier tests a different boundary:
 
 Ordered by dependency:
 
-### Step 1 — Fix g0-spike workspace poison
+### Step 1 — Fix g0-spike workspace poison ✅ done
 
-**Prerequisite for everything else.**
-
-Remove `crates/warp-drive-g0-spike` from `[workspace] members` and remove
-the `echo-wasm-abi` / `warp-wasm` path deps from `[workspace.dependencies]`.
-The spike is frozen G0 work; it should not be in the active workspace.
-
-This eliminates the `sed` hacks in `Dockerfile` and makes the workspace
-portable to any checkout (CI, contributors, Docker) without `../echo-warp-drive`
-present.
-
-See: [`docs/backlog/bad-code/g0-spike-workspace-path-poison.md`](backlog/bad-code/g0-spike-workspace-path-poison.md)
+Removed `crates/warp-drive-g0-spike` from `[workspace] members` and the
+`echo-wasm-abi` / `warp-wasm` path deps from `[workspace.dependencies]`.
+Dockerfile `sed` hacks deleted. Workspace is now portable.
 
 ### Step 2 — GitHub Actions CI
 
-**Depends on:** Step 1 (clean Dockerfile).
+**Depends on:** Step 1 ✅.
 
-One workflow, one job. See [§9](#9-github-actions-ci) for the full spec.
+One workflow, three jobs. See [§9](#9-github-actions-ci) for the full spec.
+Add non-blocking first; protect `main` once it passes twice.
 
-### Step 3 — Fixtures crate (`warp-drive-test`)
+### Step 3 — Fixtures crate (`warp-drive-fixtures`)
 
 **Depends on:** nothing (pure domain, no FUSE).
 
-Split `FixtureTree::new()` per the bad-code card:
-- `FixtureTreeDef` owns node definitions and content.
-- `FixtureTree::from(def)` builds the inode map.
-- Named fixtures: `FixtureTreeDef::g1_acceptance()`, `FixtureTreeDef::minimal()`.
+Split `FixtureTree::new()` per the bad-code card. Two crates, not one —
+see [§5](#5-fixtures-library) for the boundary rationale.
 
-See: [§5](#5-fixtures-library) and
-[`docs/backlog/bad-code/fixture-data-mixed-with-tree-logic.md`](backlog/bad-code/fixture-data-mixed-with-tree-logic.md)
+See: [`docs/backlog/bad-code/fixture-data-mixed-with-tree-logic.md`](backlog/bad-code/fixture-data-mixed-with-tree-logic.md)
 
-### Step 4 — Integration test harness
+### Step 4 — Integration test harness (`warp-drive-test-harness`)
 
 **Depends on:** Step 3 (fixture crate).
 
-A `MountGuard` RAII type and assertion helpers that let Rust `#[test]`
-functions mount a fixture tree, assert against it through the real kernel
-interface, and unmount on drop.
+`MountGuard` RAII type and assertion helpers for Rust `#[test]` functions
+that mount a fixture tree, assert through the real kernel interface, and
+unmount on drop.
 
 See: [§6](#6-integration-test-harness).
 
 ### Step 5 — In-memory debug Continuum backend
 
-**Target gate:** G2.
+**Target gate:** G2 support (not the G2 gate itself).
 
-A fake backend implementing the Continuum protocol surface that can be scripted
-in tests: inject specific states, trigger frontier advances, simulate
-obstructions. Enables testing the projection adapter without a live Echo
-runtime.
+A scriptable fake Continuum backend for testing the projection adapter layer.
+The G2 gate requires a real Echo rlib coordinate + observe cycle, not just the
+fake. The debug backend enables projection-adapter unit tests without that
+requirement.
 
 See: [§8](#8-backend-progression).
 
@@ -158,14 +148,14 @@ See: [§8](#8-backend-progression).
 
 ## 5. Fixtures library
 
-### Crate: `warp-drive-test`
+The fixture infrastructure is two crates with a clean boundary.
 
-A pure-domain crate with no FUSE dependency. Usable in both unit and
-integration tests.
+### Crate 1: `warp-drive-fixtures` (pure domain)
+
+No FUSE dependency. No `tempfile`. No platform assumptions. Usable anywhere.
 
 ```rust
 /// A declarative definition of a virtual filesystem tree.
-/// Build one with `FixtureTreeDef::g1_acceptance()` or construct your own.
 pub struct FixtureTreeDef {
     pub nodes: Vec<NodeDef>,
 }
@@ -180,12 +170,12 @@ pub struct NodeDef {
 
 pub enum NodeContentDef {
     File(&'static [u8]),
-    Dir,        // children derived from other nodes' parent_ino
+    Dir,          // children derived from other nodes' parent_ino
     Symlink(&'static [u8]),
 }
 ```
 
-### Named fixtures
+Named fixtures:
 
 | Name | Description | When to use |
 |------|-------------|-------------|
@@ -194,13 +184,13 @@ pub enum NodeContentDef {
 | `FixtureTreeDef::deep_symlinks()` | Chain of symlinks | Readlink / symlink-resolution edge cases |
 | `FixtureTreeDef::empty_dirs()` | Nested empty directories | Readdir edge cases |
 
-Named fixtures grow as gate requirements grow. G2 adds fixtures exercising
-coordinate switching and frontier advance. G3 adds fixtures with large files,
-binary content, and long paths.
+Named fixtures grow as gate requirements grow. G2 fixtures exercise coordinate
+switching and frontier advance. G3 fixtures add large files, binary content,
+long paths.
 
-### `FixtureTree::from(def)`
+### `FixtureTree::from_def`
 
-`warp-drive-core` gains:
+`warp-drive-core` gains a validated constructor:
 
 ```rust
 impl FixtureTree {
@@ -215,7 +205,15 @@ pub enum FixtureError {
 ```
 
 Construction validates the tree and returns a typed error rather than
-panicking, making fixture bugs visible in tests rather than at mount time.
+panicking — fixture bugs surface in tests, not at mount time.
+
+### Crate 2: `warp-drive-test-harness` (Linux / FUSE)
+
+Depends on `warp-drive-fixtures` + platform bits (`fuser`, `tempfile`).
+Linux-only (`#[cfg(target_os = "linux")]`). Never compiled into production
+binaries.
+
+See [§6](#6-integration-test-harness) for the `MountGuard` design.
 
 ---
 
@@ -223,16 +221,14 @@ panicking, making fixture bugs visible in tests rather than at mount time.
 
 ### `MountGuard`
 
-Linux-only (gated `#[cfg(target_os = "linux")]`). Lives in `warp-drive-test`.
-
 ```rust
 pub struct MountGuard {
     mount_point: TempDir,
 }
 
 impl MountGuard {
-    /// Mount `tree` at a fresh temp directory. Blocks until the FUSE
-    /// process confirms the mount is ready.
+    /// Mount `tree` at a fresh temp directory.
+    /// Polls until the FUSE process confirms the mount is live.
     pub fn mount(tree: FixtureTree) -> Result<Self, MountError> { ... }
 
     pub fn path(&self) -> &Path { ... }
@@ -255,7 +251,7 @@ pub fn assert_readonly(guard: &MountGuard, rel: &str);
 pub fn assert_inode(guard: &MountGuard, rel: &str, expected_ino: u64);
 ```
 
-### Example test
+### Example tests
 
 ```rust
 #[test]
@@ -264,7 +260,6 @@ fn readme_content_is_correct() {
     let guard = MountGuard::mount(
         FixtureTree::from_def(FixtureTreeDef::g1_acceptance()).unwrap()
     ).unwrap();
-
     assert_file(&guard, "README.md", b"# WARP DRIVE G1 Fixture\n...");
 }
 
@@ -274,7 +269,6 @@ fn symlink_resolves_through_kernel() {
     let guard = MountGuard::mount(
         FixtureTree::from_def(FixtureTreeDef::g1_acceptance()).unwrap()
     ).unwrap();
-
     assert_symlink(&guard, "links/readme", "../README.md");
     assert_file(&guard, "links/readme", b"# WARP DRIVE G1 Fixture\n...");
 }
@@ -285,14 +279,12 @@ fn write_is_rejected_with_erofs() {
     let guard = MountGuard::mount(
         FixtureTree::from_def(FixtureTreeDef::g1_acceptance()).unwrap()
     ).unwrap();
-
     assert_readonly(&guard, "README.md");
     assert_readonly(&guard, "src/main.ts");
 }
 ```
 
-Each test gets its own `TempDir`, so tests are fully isolated and can run
-in parallel.
+Each test gets its own `TempDir` — tests are fully isolated and run in parallel.
 
 ---
 
@@ -304,7 +296,7 @@ A test is **safe to execute** if all five conditions hold:
    never target a live Continuum cluster unless explicitly opted in with a
    flag that is not set in CI.
 
-2. **Isolated.** Each test gets its own mount point (a `TempDir`) and its own
+2. **Isolated.** Each test gets its own mount point (`TempDir`) and its own
    backend instance. Tests MUST NOT share state.
 
 3. **Self-cleaning.** `MountGuard::drop` unmounts. If a test panics, the drop
@@ -316,7 +308,7 @@ A test is **safe to execute** if all five conditions hold:
 
 5. **Network-free (unit and integration).** Unit and integration tests resolve
    all dependencies in-process. Gate acceptance tests (`cargo xtask acceptance`)
-   MAY pull Docker images, but that is the only network dependency.
+   MAY pull Docker images — that is the only permitted network dependency.
 
 A test that violates any of these conditions MUST NOT land on `main`.
 
@@ -324,49 +316,53 @@ A test that violates any of these conditions MUST NOT land on `main`.
 
 ## 8. Backend progression
 
-The same acceptance assertions run against every backend. Only the mount
-setup changes. The target is a conformance model where "passing G1 acceptance"
-means the same thing regardless of which backend serves the projection.
+The same acceptance assertions run against every backend. Only the mount setup
+changes. The long-term target is a conformance model where "passing G1
+acceptance" means the same thing regardless of which backend serves the
+projection — the empirical proof of the substrate-agnostic claim.
 
-| Backend | Gate | How it's wired | What it proves |
+| Backend | Role | How it's wired | What it proves |
 |---------|------|----------------|----------------|
-| **In-memory fixture** | G1 | `FixtureTree::from_def(...)` | POSIX translation layer is correct |
-| **In-memory debug Continuum** | G2 | `DebugBackend::new()` — scriptable fake | Projection adapter handles coordinate switching, frontier advance |
-| **Embedded Echo** | G3 | `EchoEmbedded::new(wasm_bytes)` — Echo running in-process via wasmtime | Full stack without network; validates WASM boundary |
-| **Live Echo / Continuum** | G4+ | `EchoRemote::connect(addr)` — real Echo instance | Production integration; network-dependent, never in CI default |
+| **In-memory fixture** | G1 gate ✅ | `FixtureTree::from_def(...)` | POSIX translation layer is correct |
+| **In-memory debug Continuum** | G2 support | `DebugBackend::new()` — scriptable fake | Projection adapter handles coordinate switching, frontier advance, obstructions |
+| **Embedded Echo rlib** | G2 gate | `EchoEmbedded::init()` over the `warp-wasm` native rlib surface | Real coordinate, real `observe` cycle, no network |
+| **Live Echo / Continuum** | G4+ | `EchoRemote::connect(addr)` | Production integration; network-dependent, never in CI default |
 
-### In-memory debug Continuum backend (G2 target)
+**Critical distinction:** The G2 gate requires a real Echo rlib observe cycle —
+not the debug backend. The debug backend is a G2 *support tool* that enables
+projection-adapter unit tests without a live Echo runtime. These are different
+things. Do not let the fake backend stand in for the real gate.
 
-The debug backend implements whatever Continuum protocol surface the
-projection adapter requires. It is:
+**On embedding:** G0 established the embedding path. The artifact is a native
+Rust **rlib** linked directly into the binary — not a WASM module loaded via
+wasmtime. G3's `EchoEmbedded` calls into that rlib surface. There is no
+wasmtime in this stack.
 
-- Scriptable: `backend.set_file("src/main.ts", b"...")`, `backend.advance_frontier()`
-- Inspectable: `backend.observed_ops()` returns the sequence of operations the
-  adapter issued
-- Error-injectable: `backend.fail_next_lookup(ObstructionReason::NotFound)` lets
+### In-memory debug Continuum backend (G2 support)
+
+The debug backend implements the Continuum protocol surface the projection
+adapter requires. It is:
+
+- **Scriptable:** `backend.set_file("src/main.ts", b"...")`, `backend.advance_frontier()`
+- **Inspectable:** `backend.observed_ops()` returns the ops the adapter issued
+- **Error-injectable:** `backend.fail_next_lookup(ObstructionReason::NotFound)` lets
   tests verify the adapter's error handling
 
-The debug backend lives in `warp-drive-test`. It MUST NOT be compiled into
-production binaries (no `warp-drive-fuse` dependency).
+Lives in `warp-drive-test-harness`. MUST NOT be compiled into production binaries.
 
-### Conformance test suite
+### Conformance
 
 At G3+, `cargo xtask acceptance --backend in-memory` and
-`cargo xtask acceptance --backend echo-embedded` MUST both pass against the
-same `scripts/acceptance.sh` script. The script is backend-agnostic; only
-the mount setup differs.
+`cargo xtask acceptance --backend echo-rlib` MUST both pass against the same
+`scripts/acceptance.sh`. The script is backend-agnostic; only mount setup
+differs.
 
-This makes "backend conformance" a mechanical property: write the backend,
-run the script, see if it passes.
+Backend conformance is mechanical: write the backend, run the script, see if
+it passes.
 
 ---
 
 ## 9. GitHub Actions CI
-
-### Prerequisite
-
-Resolve [g0-spike-workspace-path-poison](backlog/bad-code/g0-spike-workspace-path-poison.md)
-so the `Dockerfile` needs no `sed` patching.
 
 ### Workflow: `.github/workflows/ci.yml`
 
@@ -385,51 +381,49 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build acceptance image
-        run: docker build -t warp-drive-g1 .
-
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.90.0"
       - name: Run G1 acceptance
-        run: |
-          docker run --rm \
-            --device /dev/fuse \
-            --cap-add SYS_ADMIN \
-            warp-drive-g1
+        run: cargo xtask acceptance
 
   unit:
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --workspace --exclude warp-drive-g0-spike
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.90.0"
+      - run: cargo test --workspace
 
   lint:
     name: Clippy + fmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
-          components: clippy, rustfmt
+          toolchain: "1.90.0"
+          components: clippy,rustfmt
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --exclude warp-drive-g0-spike -- -D warnings
+      - run: cargo clippy --workspace -- -D warnings
 ```
+
+### Toolchain pinning
+
+The workspace specifies `rust-version = "1.90.0"`. CI pins to the same
+version explicitly. Floating `stable` is how CI becomes haunted on a Tuesday.
 
 ### Branch protection
 
-Gate merges to `main` on:
-- `acceptance` passing (non-negotiable — the G1 gate)
-- `unit` passing
-- `lint` passing
-
-The `acceptance` job is the load-bearing one. The others exist to catch
-regressions before they reach it.
+Add protection once the workflow passes twice on `ubuntu-latest`. Gate merges
+to `main` on all three jobs. The `acceptance` job is the load-bearing one.
 
 ### Future jobs (added as gates advance)
 
 | Job | Added at | What it runs |
 |-----|----------|--------------|
-| `integration` | Step 4 complete | `cargo test` with Linux FUSE harness |
+| `integration` | Harness complete | `cargo test` with Linux FUSE harness |
 | `acceptance-g2` | G2 gate | `cargo xtask acceptance --gate g2` |
-| `acceptance-echo-embedded` | G3 gate | `cargo xtask acceptance --backend echo-embedded` |
+| `acceptance-echo-rlib` | G3 gate | `cargo xtask acceptance --backend echo-rlib` |
