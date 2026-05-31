@@ -6,11 +6,16 @@ members = [
     "crates/warp-drive-fuse",
     "xtask",
 ]
-# crates/warp-drive-g0-spike is intentionally excluded from the active
-# workspace. It is frozen G0 proof-of-concept code that depends on
-# ../echo-warp-drive path deps, which are not present in CI, Docker, or
-# fresh contributor checkouts. Keep the source for reference; do not
-# include it in the workspace.
+exclude = [
+    "crates/warp-drive-g0-spike",
+    "crates/warp-drive-echo-backend",
+    "crates/warp-drive-fuse-echo",
+]
+# crates/warp-drive-g0-spike, crates/warp-drive-echo-backend, and
+# crates/warp-drive-fuse-echo are intentionally excluded from the active
+# workspace. They depend on ../echo-warp-drive path deps, which are not present
+# in CI, Docker, or fresh contributor checkouts. Keep their source for
+# reference/local gates; do not include them in default workspace checks.
 resolver = "2"
 
 [workspace.package]
