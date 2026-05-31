@@ -5,8 +5,8 @@
 
 **Date:** 2026-05-31
 **Branch:** `gate/g2`
-**Validated commit:** `093f5c5` (acceptance proof strengthened and validated)
-**Acceptance transcript commit:** `d32254e`
+**Validated commit:** `59b304d` (self-review fixes validated)
+**Acceptance transcript:** revalidated after self-review fixes
 **Status:** PASS
 **Command:** `cargo xtask acceptance --runtime=echo-rlib`
 **Runner:** Docker Desktop on macOS host, Linux container `rust:1.90`
@@ -88,8 +88,8 @@ The first Docker attempt used `bash -lc` without explicitly prepending
 ```text
 === WARP DRIVE G2a acceptance ===
 
-Mounting at /tmp/warp-g2 (echo-rlib backend) ...
-Mounted (fuse pid 2906).
+Mounting at /tmp/warp-g2.JOsmy8 (echo-rlib backend) ...
+Mounted (fuse pid 967).
 
 -- ls -----------------------------------------------------------------
   PASS  ls / contains README.md
