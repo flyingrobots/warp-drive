@@ -6,8 +6,9 @@
 # Mounts the in-memory fixture tree and verifies POSIX read semantics and
 # write rejection.
 #
-# Usage (Docker): docker run --rm --device /dev/fuse --cap-add SYS_ADMIN warp-drive-g1
-# Usage (local):  bash scripts/acceptance.sh
+# Linux-only. Uses GNU stat, fusermount3, and /dev/fuse.
+# Usage: cargo xtask acceptance
+# Direct: docker run --rm --device /dev/fuse --cap-add SYS_ADMIN warp-drive-g1
 set -euo pipefail
 
 MOUNT=/tmp/warp-g1
@@ -177,13 +178,13 @@ assert_contains "$LINK_CONTENT" "WARP DRIVE G1 Fixture" "symlink resolves to REA
 
 echo ""
 echo "── write rejection ─────────────────────────────────────────────────────"
-if echo "nope" > "$MOUNT/README.md" 2>/dev/null; then
+if ( echo "nope" > "$MOUNT/README.md" ) 2>/dev/null; then
     fail "write to README.md should be rejected (EROFS)"
 else
     pass "write to README.md correctly rejected (EROFS)"
 fi
 
-if touch "$MOUNT/newfile.txt" 2>/dev/null; then
+if ( touch "$MOUNT/newfile.txt" ) 2>/dev/null; then
     fail "create newfile.txt should be rejected (EROFS)"
 else
     pass "create newfile.txt correctly rejected (EROFS)"
