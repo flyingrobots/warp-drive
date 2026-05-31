@@ -13,6 +13,8 @@
 //! **Introduced at:** G1.
 
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt;
 
 /// A stable inode number.
 ///
@@ -95,6 +97,30 @@ impl VirtualNode {
 pub struct FixtureTree {
     nodes: HashMap<Ino, VirtualNode>,
 }
+
+/// Errors produced while constructing fixed fixture variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FixtureTreeError {
+    /// A required metadata inode is missing from the hardcoded fixture.
+    MissingMetadataInode(Ino),
+    /// A required metadata inode exists but is not a regular file.
+    MetadataInodeNotFile(Ino),
+}
+
+impl fmt::Display for FixtureTreeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingMetadataInode(ino) => {
+                write!(f, "fixture metadata inode {} is missing", ino.0)
+            }
+            Self::MetadataInodeNotFile(ino) => {
+                write!(f, "fixture metadata inode {} is not a regular file", ino.0)
+            }
+        }
+    }
+}
+
+impl Error for FixtureTreeError {}
 
 impl FixtureTree {
     /// Construct the hardcoded G1 fixture tree.
@@ -313,13 +339,21 @@ impl FixtureTree {
     ///
     /// This is the G2a bridge: the POSIX tree stays seeded from the G1 fixture,
     /// while runtime metadata files can be produced by an external backend.
-    #[must_use]
-    pub fn with_warp_metadata(coordinate: Vec<u8>, runtime: Vec<u8>, stats: Vec<u8>) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FixtureTreeError`] if the hardcoded `.warp/` metadata inodes
+    /// are missing or no longer point at regular files.
+    pub fn with_warp_metadata(
+        coordinate: Vec<u8>,
+        runtime: Vec<u8>,
+        stats: Vec<u8>,
+    ) -> Result<Self, FixtureTreeError> {
         let mut tree = Self::new();
-        tree.replace_file_bytes(Ino(11), coordinate);
-        tree.replace_file_bytes(Ino(12), runtime);
-        tree.replace_file_bytes(Ino(13), stats);
-        tree
+        tree.replace_file_bytes(Ino(11), coordinate)?;
+        tree.replace_file_bytes(Ino(12), runtime)?;
+        tree.replace_file_bytes(Ino(13), stats)?;
+        Ok(tree)
     }
 
     /// Look up a child of `parent` by raw name bytes.
@@ -358,10 +392,15 @@ impl FixtureTree {
         }
     }
 
-    fn replace_file_bytes(&mut self, ino: Ino, bytes: Vec<u8>) {
-        if let Some(node) = self.nodes.get_mut(&ino) {
-            node.content = NodeContent::Bytes(bytes);
+    fn replace_file_bytes(&mut self, ino: Ino, bytes: Vec<u8>) -> Result<(), FixtureTreeError> {
+        let Some(node) = self.nodes.get_mut(&ino) else {
+            return Err(FixtureTreeError::MissingMetadataInode(ino));
+        };
+        if node.kind != NodeKind::RegularFile {
+            return Err(FixtureTreeError::MetadataInodeNotFile(ino));
         }
+        node.content = NodeContent::Bytes(bytes);
+        Ok(())
     }
 }
 

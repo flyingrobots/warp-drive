@@ -4,12 +4,12 @@
 #
 # G2a gate acceptance test.
 # Mounts the echo-rlib backend and verifies:
-#   - All 29 G1 assertions still pass (same file tree)
+#   - G1 read assertions still pass (same file tree)
 #   - /.warp/coordinate contains a real Echo worldline UUID (not genesis placeholder)
-#   - /.warp/coordinate contains a real state_root hash
+#   - /.warp/coordinate contains non-zero 64-char hex frontier/state_root/artifact_hash values
 #   - /.warp/runtime identifies the echo-rlib backend
 #
-# Linux-only. Requires warp-drive-fuse built with the echo-rlib feature.
+# Linux-only. Requires the local Echo-capable warp-drive-fuse binary.
 # Usage: cargo xtask acceptance --runtime echo-rlib
 set -euo pipefail
 
@@ -60,6 +60,21 @@ assert_not_contains() {
         fail "$label" "(must not contain) $needle" "$haystack"
     else
         pass "$label"
+    fi
+}
+
+json_hex_value() {
+    local json="$1" key="$2"
+    echo "$json" | sed -n "s/.*\"$key\":\"\\([0-9a-f]*\\)\".*/\\1/p" | head -1
+}
+
+assert_nonzero_hex64() {
+    local value="$1" label="$2"
+    local zero="0000000000000000000000000000000000000000000000000000000000000000"
+    if echo "$value" | grep -Eq '^[0-9a-f]{64}$' && [ "$value" != "$zero" ]; then
+        pass "$label"
+    else
+        fail "$label" "non-zero 64-char hex" "$value"
     fi
 }
 
@@ -140,6 +155,7 @@ COORD=$(cat "$MOUNT/.warp/coordinate")
 assert_contains "$COORD" '"worldline"'   ".warp/coordinate has worldline field"
 assert_contains "$COORD" '"frontier"'    ".warp/coordinate has frontier field"
 assert_contains "$COORD" '"state_root"'  ".warp/coordinate has state_root field"
+assert_contains "$COORD" '"artifact_hash"' ".warp/coordinate has artifact_hash field"
 assert_contains "$COORD" '"gate":"G2a"'  ".warp/coordinate identifies gate G2a"
 
 RUNTIME_JSON=$(cat "$MOUNT/.warp/runtime")
@@ -159,13 +175,13 @@ assert_not_contains "$COORD" \
     '"worldline":"00000000-0000-0000-0000-000000000001"' \
     ".warp/coordinate worldline is real (not genesis placeholder)"
 
-# state_root must be present and non-empty
-STATE_ROOT=$(echo "$COORD" | grep -o '"state_root":"[^"]*"' | head -1 || true)
-if [ -n "$STATE_ROOT" ] && [ "$STATE_ROOT" != '"state_root":""' ]; then
-    pass ".warp/coordinate state_root is non-empty"
-else
-    fail ".warp/coordinate state_root is non-empty" "non-empty state_root" "$STATE_ROOT"
-fi
+# Coordinate hashes must be concrete, non-zero 32-byte hex values.
+FRONTIER_VALUE=$(json_hex_value "$COORD" "frontier" || true)
+STATE_ROOT_VALUE=$(json_hex_value "$COORD" "state_root" || true)
+ARTIFACT_HASH_VALUE=$(json_hex_value "$COORD" "artifact_hash" || true)
+assert_nonzero_hex64 "$FRONTIER_VALUE" ".warp/coordinate frontier is 64-char non-zero hex"
+assert_nonzero_hex64 "$STATE_ROOT_VALUE" ".warp/coordinate state_root is 64-char non-zero hex"
+assert_nonzero_hex64 "$ARTIFACT_HASH_VALUE" ".warp/coordinate artifact_hash is 64-char non-zero hex"
 
 # backend field must identify echo-rlib
 assert_contains "$COORD" '"backend":"echo-rlib"' \

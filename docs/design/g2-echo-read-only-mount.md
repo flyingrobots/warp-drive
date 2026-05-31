@@ -312,7 +312,7 @@ decisions made in G2a are all reused when projected file bytes are added.
 | `EchoCoordinateMeta` + `/.warp/coordinate` content generation | warp-drive | 1 h |
 | FUSE binary `--runtime=echo-rlib` plumbing | warp-drive | 1 h |
 | Workspace Cargo.toml: exclude local Echo crates | warp-drive | 1 h |
-| `scripts/acceptance-g2.sh` (32 assertions) | warp-drive | 1 h |
+| `scripts/acceptance-g2.sh` (computed assertion count) | warp-drive | 1 h |
 | `cargo xtask acceptance --runtime=echo-rlib` xtask command | warp-drive | 1 h |
 | G2a gate record (`docs/gates/G2a.md`) | warp-drive | 0.5 h |
 | **Total** | | **~8.5 h** |
@@ -323,5 +323,8 @@ decisions made in G2a are all reused when projected file bytes are added.
 
 `scripts/acceptance-g2.sh` — a thin G2a wrapper over `scripts/acceptance.sh` that:
 1. Runs with `WARP_RUNTIME=echo-rlib` (or `--runtime=echo-rlib` flag)
-2. Adds the 3 G2a-specific assertions after the 29 G1 assertions
-3. Reports "G2a GATE PASSED (32 / 32 assertions)" on success
+2. Replays the G1 read assertions against the Echo metadata mount
+3. Adds stricter G2a coordinate assertions for non-placeholder worldline,
+   echo-rlib backend, and non-zero 64-character hex `frontier`, `state_root`,
+   and `artifact_hash` values
+4. Reports the computed assertion count on success

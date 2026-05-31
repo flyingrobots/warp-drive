@@ -38,7 +38,8 @@ impl EchoBackend {
             metadata.coordinate_json().into_bytes(),
             metadata.runtime_json().into_bytes(),
             metadata.stats_json().into_bytes(),
-        );
+        )
+        .map_err(|err| EchoBackendError::FixtureTree(err.to_string()))?;
 
         Ok(Self { tree })
     }
@@ -65,6 +66,8 @@ pub enum EchoBackendError {
     DecodeResponse(String),
     /// Echo returned a non-head payload for a head request.
     UnexpectedPayload,
+    /// Cached fixture tree construction failed.
+    FixtureTree(String),
 }
 
 impl fmt::Display for EchoBackendError {
@@ -82,6 +85,9 @@ impl fmt::Display for EchoBackendError {
                 write!(f, "Echo observation response decoding failed: {message}")
             }
             Self::UnexpectedPayload => f.write_str("Echo observation returned a non-head payload"),
+            Self::FixtureTree(message) => {
+                write!(f, "Echo metadata fixture construction failed: {message}")
+            }
         }
     }
 }

@@ -31,6 +31,8 @@ that file bytes are projected from Echo.
    `OkEnvelope<ObservationArtifact>` for the default worldline frontier.
 4. `/.warp/coordinate` contains Echo-derived `worldline`, `frontier`,
    `state_root`, `tick`, and `artifact_hash` fields.
+   Acceptance requires `frontier`, `state_root`, and `artifact_hash` to be
+   non-zero 64-character lowercase hex values.
 5. `/.warp/runtime` identifies the `echo-rlib` backend and `G2a` gate.
 6. The G1 POSIX read surface still works while metadata comes from Echo.
 
