@@ -3,40 +3,33 @@
 
 # `cargo xtask acceptance` — one-shot gate acceptance runner
 
-**Status:** cool idea. Surface when wiring up G1 acceptance tests.
+**Status:** ✅ implemented at G1 (Docker-based). Extend for G2+.
 
-## The idea
+## What landed (G1)
 
-Add an `acceptance` subcommand to the xtask that runs the full G1
-acceptance script in one shot:
+`cargo xtask acceptance` builds a Linux Docker image and runs 29 assertions
+covering the full G1 acceptance sequence:
 
-1. `mkdir -p /tmp/warp-drive-acceptance`
-2. Spawn `warp-drive-fuse` in the background
-3. Wait for the mount point to become readable
-4. Run each acceptance command (`ls`, `cat`, `find`, `rg`, `stat`,
-   `readlink`, write-rejection) and capture output
-5. Assert expected content / expected errors
-6. `umount` and report pass/fail with diff output on failure
+- `ls -a` (directory listing including hidden `.warp/`)
+- `cat` (file contents for README, package.json, src/\*.ts, .warp/\*)
+- `find` (full tree walk)
+- `rg` (ripgrep search across the mount)
+- `stat` (inode number, file type)
+- `readlink` + symlink resolution
+- write rejection (EROFS) for both overwrite and create
 
-The gate condition becomes mechanically verifiable: `cargo xtask acceptance`
-exits 0 = gate passed, non-zero = gate failed.
+Gate condition is mechanical: `cargo xtask acceptance` exits 0 = passed,
+non-zero = failed.
 
-## Why it matters
+## Extend to G2+
 
-Right now "did G1 pass?" requires a human to read the output of 10 manual
-commands and judge. That is fine for the first run. It is not fine for CI,
-for future contributors, or for re-verifying after a refactor.
+```
+cargo xtask acceptance --gate g2
+cargo xtask acceptance          # runs all gates up to current
+```
 
-The xtask is already the natural home for this — it already has `mount` and
-`unmount`. `acceptance` is just those two plus assertions between them.
+Each gate gets its own acceptance script (`scripts/acceptance-g2.sh`, etc.)
+or the single script gains a `--gate` flag. The xtask dispatches accordingly.
 
-## Extend to all gates
-
-The same pattern extends to G2, G3, etc. Each gate gets an xtask command.
-`cargo xtask acceptance --gate g1` selects the script. `cargo xtask acceptance`
-with no flag runs all gates up to the current one.
-
-## Surface when
-
-- Writing G1 acceptance tests
-- Setting up GitHub Actions for the first real CI run
+The Docker image can stay shared across gates — just mount different fixture
+content or connect to a real Echo projection for G3+.
