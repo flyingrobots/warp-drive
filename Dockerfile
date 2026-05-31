@@ -17,11 +17,6 @@ RUN apt-get update && \
 
 COPY . .
 
-# The g0-spike crate depends on ../echo-warp-drive (not in this build context).
-# Strip it from the workspace so Cargo doesn't try to resolve its path deps.
-RUN sed -i '/"crates\/warp-drive-g0-spike"/d' Cargo.toml && \
-    sed -i '/^echo-wasm-abi/d; /^warp-wasm/d' Cargo.toml
-
 RUN cargo build --package warp-drive-fuse && \
     cp target/debug/warp-drive-fuse /usr/local/bin/warp-drive-fuse
 
