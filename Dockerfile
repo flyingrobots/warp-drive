@@ -6,7 +6,8 @@
 #
 # Usage:
 #   docker build -t warp-drive-g1 .
-#   docker run --rm --device /dev/fuse --cap-add SYS_ADMIN warp-drive-g1
+#   docker run --rm --device /dev/fuse --cap-add SYS_ADMIN \
+#     --security-opt apparmor=unconfined warp-drive-g1
 
 FROM rust:latest
 WORKDIR /app

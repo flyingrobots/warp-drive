@@ -8,7 +8,8 @@
 #
 # Linux-only. Uses GNU stat, fusermount3, and /dev/fuse.
 # Usage: cargo xtask acceptance
-# Direct: docker run --rm --device /dev/fuse --cap-add SYS_ADMIN warp-drive-g1
+# Direct: docker run --rm --device /dev/fuse --cap-add SYS_ADMIN \
+#   --security-opt apparmor=unconfined warp-drive-g1
 set -euo pipefail
 
 MOUNT=/tmp/warp-g1

@@ -100,7 +100,7 @@ Infrastructure: CI, Docker, xtask, tooling, process.
 |------|-----------|--------|
 | G0 | rlib embedding + `observe_cbor` | ✅ passed |
 | G1 | In-memory FUSE fake tree, 29 assertions | ✅ passed |
-| G2a | Echo coordinate metadata mount, 37 assertions | ✅ passed |
+| G2a | Echo coordinate metadata mount, 38 assertions | ✅ passed |
 | G2b | Echo-projected regular-file bytes | ⏭️ active |
 | G3 | `.warp/` live diagnostics + perf counters | ⏳ |
 | G4+ | Write path, basis discipline, stale-save safety | ⏳ |

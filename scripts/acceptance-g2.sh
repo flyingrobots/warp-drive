@@ -185,6 +185,10 @@ assert_not_contains "$COORD" \
     '"worldline":"00000000-0000-0000-0000-000000000001"' \
     ".warp/coordinate worldline is real (not genesis placeholder)"
 
+# Echo serializes the observed worldline as raw lowercase hex.
+WORLDLINE_VALUE=$(json_hex_value "$COORD" "worldline" || true)
+assert_nonzero_hex64 "$WORLDLINE_VALUE" ".warp/coordinate worldline is 64-char non-zero hex"
+
 # Coordinate hashes must be concrete, non-zero 32-byte hex values.
 FRONTIER_VALUE=$(json_hex_value "$COORD" "frontier" || true)
 STATE_ROOT_VALUE=$(json_hex_value "$COORD" "state_root" || true)

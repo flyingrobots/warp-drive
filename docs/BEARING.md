@@ -22,7 +22,7 @@ Active branch: `gate/g2`.
 ## What just shipped?
 
 - **G2a gate** (`d32254e`, 2026-05-31): Echo coordinate metadata mount,
-  37/37 assertions. `/.warp/coordinate` and `/.warp/runtime` are derived from a
+  38/38 assertions. `/.warp/coordinate` and `/.warp/runtime` are derived from a
   real embedded Echo observation; normal file bytes remain the G1 fixture.
 - **G1 gate** (`25a5f0a`, 2026-05-30): In-memory FUSE fake tree, 29/29
   assertions. `ls`, `cat`, `find`, `rg`, `stat`, `readlink`, write

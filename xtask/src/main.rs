@@ -64,7 +64,8 @@ enum Task {
     ///
     /// For `in-memory`, equivalent to:
     ///   docker build -t warp-drive-g1 .
-    ///   docker run --rm --device /dev/fuse --cap-add SYS_ADMIN warp-drive-g1
+    ///   docker run --rm --device /dev/fuse --cap-add SYS_ADMIN \
+    ///     --security-opt apparmor=unconfined warp-drive-g1
     Acceptance {
         /// Docker image tag to use.
         #[arg(long, default_value = "warp-drive-g1")]
@@ -210,6 +211,8 @@ fn acceptance_in_memory(tag: &str) -> Result<(), String> {
             "/dev/fuse",
             "--cap-add",
             "SYS_ADMIN",
+            "--security-opt",
+            "apparmor=unconfined",
             tag,
         ],
     )

@@ -218,7 +218,7 @@ read-only fixture assertions and adds Echo-derived metadata assertions for
 `.warp/coordinate` and `.warp/runtime`.
 
 The script must pass all reported assertions. The accepted G2a transcript
-records `37 / 37` passing assertions.
+records `38 / 38` passing assertions.
 
 G2a-specific assertions prove:
 
@@ -226,8 +226,8 @@ G2a-specific assertions prove:
 - `/.warp/coordinate` is valid JSON-shaped text for the Echo-backed run.
 - `worldline`, `state_root`, `frontier`, and `artifact_hash` fields are
   present.
-- `state_root`, `frontier`, and `artifact_hash` are non-zero 64-character
-  lowercase hex values.
+- `worldline`, `state_root`, `frontier`, and `artifact_hash` are non-zero
+  64-character lowercase hex values.
 - The coordinate is not the G1 genesis placeholder.
 
 Non-goals for G2a:
