@@ -66,6 +66,12 @@ pub enum EchoBackendError {
     DecodeResponse(String),
     /// Echo returned a non-head payload for a head request.
     UnexpectedPayload,
+    /// Echo returned an artifact whose head and resolved coordinate disagree.
+    InconsistentArtifact {
+        field: &'static str,
+        head: String,
+        resolved: String,
+    },
     /// Cached fixture tree construction failed.
     FixtureTree(String),
 }
@@ -85,6 +91,14 @@ impl fmt::Display for EchoBackendError {
                 write!(f, "Echo observation response decoding failed: {message}")
             }
             Self::UnexpectedPayload => f.write_str("Echo observation returned a non-head payload"),
+            Self::InconsistentArtifact {
+                field,
+                head,
+                resolved,
+            } => write!(
+                f,
+                "Echo observation artifact has inconsistent {field}: head={head}, resolved={resolved}"
+            ),
             Self::FixtureTree(message) => {
                 write!(f, "Echo metadata fixture construction failed: {message}")
             }
@@ -108,11 +122,27 @@ impl EchoCoordinateMetadata {
             return Err(EchoBackendError::UnexpectedPayload);
         };
 
+        let frontier = hex(&head.commit_id);
+        let resolved_frontier = hex(&artifact.resolved.commit_hash);
+        ensure_artifact_field("frontier", &frontier, &resolved_frontier)?;
+
+        let state_root = hex(&head.state_root);
+        let resolved_state_root = hex(&artifact.resolved.state_root);
+        ensure_artifact_field("state_root", &state_root, &resolved_state_root)?;
+
+        let tick = head.worldline_tick.as_u64();
+        let resolved_tick = artifact.resolved.resolved_worldline_tick.as_u64();
+        ensure_artifact_field(
+            "worldline_tick",
+            &tick.to_string(),
+            &resolved_tick.to_string(),
+        )?;
+
         Ok(Self {
             worldline: hex(artifact.resolved.worldline_id.as_bytes()),
-            frontier: hex(&head.commit_id),
-            state_root: hex(&head.state_root),
-            tick: head.worldline_tick.as_u64(),
+            frontier,
+            state_root,
+            tick,
             artifact_hash: hex(&artifact.artifact_hash),
         })
     }
@@ -135,6 +165,22 @@ impl EchoCoordinateMetadata {
         "{\"gate\":\"G2a\",\"status\":\"static-placeholder\",\"note\":\"live counters arrive at G3\",\"lookup_count\":0,\"getattr_count\":0,\"readdir_count\":0,\"open_count\":0,\"read_count\":0,\"readlink_count\":0}\n"
             .to_owned()
     }
+}
+
+fn ensure_artifact_field(
+    field: &'static str,
+    head: &str,
+    resolved: &str,
+) -> Result<(), EchoBackendError> {
+    if head == resolved {
+        return Ok(());
+    }
+
+    Err(EchoBackendError::InconsistentArtifact {
+        field,
+        head: head.to_owned(),
+        resolved: resolved.to_owned(),
+    })
 }
 
 fn observe_head(worldline_id: WorldlineId) -> Result<ObservationArtifact, EchoBackendError> {

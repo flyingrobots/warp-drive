@@ -40,6 +40,7 @@ backlog item → design doc → RED → GREEN → acceptance run → gate record
 ### 1. Design
 
 Pull an item from the backlog into `docs/design/<slug>.md`. The design names:
+
 - The gate condition (exact, falsifiable).
 - The implementation approach.
 - Open questions and risks.
@@ -61,6 +62,7 @@ Make the tests pass. Keep CI green throughout.
 ### 5. Gate record
 
 Create `docs/gates/GN.md` with:
+
 - Date, commit SHA, runner
 - Full acceptance transcript
 - Caveats (what was not tested, what platform limitations exist)
@@ -72,6 +74,7 @@ Open a PR from `gate/gN` to `main`. CI must pass. No merge without green CI.
 ### 7. Ship sync
 
 After merge, on `main`:
+
 - Update `docs/BEARING.md`
 - Update `CHANGELOG.md`
 - Refresh `docs/VISION.md` if the gate significantly changes the project shape

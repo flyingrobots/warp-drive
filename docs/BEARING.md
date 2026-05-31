@@ -11,15 +11,19 @@ replace backlog items, design docs, gate records, or acceptance runs.
 
 ## Where are we going?
 
-**Current gate:** G2 — Echo read-only mount.
+**Current gate:** G2b — Echo-projected file bytes.
 
-Gate condition: real Echo coordinate, real `observe` via the `warp-wasm`
-native rlib; projected bytes appear at the FUSE mount point.
+G2a passed: real Echo coordinate metadata appears at the FUSE mount point via
+the `warp-wasm` native rlib. Normal file bytes remain G1 fixture bytes until
+G2b proves an Echo-backed projection.
 
 Active branch: `gate/g2`.
 
 ## What just shipped?
 
+- **G2a gate** (`d32254e`, 2026-05-31): Echo coordinate metadata mount,
+  37/37 assertions. `/.warp/coordinate` and `/.warp/runtime` are derived from a
+  real embedded Echo observation; normal file bytes remain the G1 fixture.
 - **G1 gate** (`25a5f0a`, 2026-05-30): In-memory FUSE fake tree, 29/29
   assertions. `ls`, `cat`, `find`, `rg`, `stat`, `readlink`, write
   rejection all pass against the fixture tree on Linux Docker.

@@ -216,7 +216,7 @@ impl fuser::Filesystem for FuseAdapter {
             if idx >= skip {
                 let kind = self
                     .tree
-                    .get(*child_ino)
+                    .get(child_ino)
                     .map_or(FileType::RegularFile, |n| fuse_kind(n.kind));
                 let full = reply.add(
                     INodeNo(child_ino.0),

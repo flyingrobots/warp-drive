@@ -1,0 +1,7 @@
+# WARP DRIVE docs intentionally mix prose, proof transcripts, compact tables,
+# changelog section headings, and frontmatter titles.
+MD013: false
+MD024:
+  siblings_only: true
+MD025: false
+MD060: false

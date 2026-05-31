@@ -13,6 +13,7 @@ source_files:
   - docs/TESTING.md
   - docs/gates/G0.md
   - docs/gates/G1.md
+  - docs/gates/G2a.md
 ---
 
 # WARP DRIVE — Executive Summary
@@ -31,7 +32,7 @@ that runtime's internals.
 
 ## Current state
 
-Two gates closed, two proofs in the repo:
+Three gates closed, three proofs in the repo:
 
 - **G0 (2026-05-29):** `warp-wasm` embeds as a native Rust rlib.
   `observe_cbor` round-trips from outside the echo workspace. The
@@ -43,8 +44,14 @@ Two gates closed, two proofs in the repo:
   the tree correctly. Writes are rejected with EROFS. The POSIX
   translation layer works.
 
+- **G2a (2026-05-31):** A FUSE mount initializes the embedded Echo rlib,
+  performs one real `observe_cbor()` head observation, and serves the
+  resulting coordinate metadata through `/.warp/coordinate` and
+  `/.warp/runtime`. Normal file bytes remain the G1 fixture source.
+
 The FUSE membrane exists in miniature. The question now shifts from
-"can a POSIX membrane exist?" to "how far can we push it?"
+"can a POSIX membrane exist?" to "what is the smallest Echo-projected file
+byte path?"
 
 ## Signposts
 
@@ -60,17 +67,22 @@ The FUSE membrane exists in miniature. The question now shifts from
 | `docs/TESTING.md` | Hand-authored | Testing strategy and backend progression |
 | `docs/gates/G0.md` | Hand-authored | G0 gate record |
 | `docs/gates/G1.md` | Hand-authored | G1 gate record |
+| `docs/gates/G2a.md` | Hand-authored | G2a gate record |
 
 ## Legends
 
 ### GATE
+
 Gate-level work: acceptance tests, projection adapters, FUSE semantics,
 domain design, inode strategy.
-- **Active:** G2 design (in progress on `gate/g2`).
+
+- **Active:** G2b design: first Echo-projected regular-file bytes.
 - **Backlog:** 4 bad-code items, 4 cool-ideas.
 
 ### INFRA
+
 Infrastructure: CI, Docker, xtask, tooling, process.
+
 - **Active:** CI wired; branch protection pending first clean run.
 - **Backlog:** 3 cool-ideas.
 
@@ -78,9 +90,9 @@ Infrastructure: CI, Docker, xtask, tooling, process.
 
 ### Active
 
-- **G2 — Echo read-only mount** (`gate/g2`): real coordinate, real
-  `observe`, live projection via `warp-wasm` rlib. The fixture tree is
-  replaced by a live Echo projection.
+- **G2b — Echo-projected file bytes**: keep G2a metadata, then prove at least
+  one non-`.warp` regular file is served from an Echo projection instead of
+  the G1 fixture tree.
 
 ### Gate sequence
 
@@ -88,7 +100,8 @@ Infrastructure: CI, Docker, xtask, tooling, process.
 |------|-----------|--------|
 | G0 | rlib embedding + `observe_cbor` | ✅ passed |
 | G1 | In-memory FUSE fake tree, 29 assertions | ✅ passed |
-| G2 | Echo read-only mount: real coordinate, real observe | ⏭️ active |
+| G2a | Echo coordinate metadata mount, 37 assertions | ✅ passed |
+| G2b | Echo-projected regular-file bytes | ⏭️ active |
 | G3 | `.warp/` live diagnostics + perf counters | ⏳ |
 | G4+ | Write path, basis discipline, stale-save safety | ⏳ |
 
@@ -100,7 +113,7 @@ Infrastructure: CI, Docker, xtask, tooling, process.
 
 ## Open questions
 
-- Does the G2 projection adapter need a trait, or is a single Echo rlib
+- Does the G2b projection adapter need a trait, or is a single Echo rlib
   call sufficient at this gate?
 - Should `MountGuard` use a thread or a subprocess for the FUSE process
   in integration tests?

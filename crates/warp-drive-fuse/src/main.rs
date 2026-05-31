@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // © James Ross Ω FLYING•ROBOTS <https://github.com/flyingrobots>
 
-//! WARP DRIVE FUSE mount binary (G1/G2a gate runner).
+//! WARP DRIVE FUSE mount binary (G1 in-memory gate runner).
 //!
 //! Mounts a read-only POSIX filesystem backed by a cached [`FixtureTree`].
 //! Implements the 7 syscalls required by the gate acceptance scripts: LOOKUP,
 //! GETATTR, READDIR, OPEN, READ, READLINK, RELEASE.
+//!
+//! G2a Echo metadata acceptance uses the excluded `warp-drive-fuse-echo`
+//! binary through `cargo xtask acceptance --runtime echo-rlib`.
 //!
 //! **Layer:** platform (FUSE binary; wraps `warp-drive-core` fixture tree).
 //!

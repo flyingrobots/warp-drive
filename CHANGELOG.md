@@ -10,7 +10,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- `gate/g2` branch: G2 design and acceptance work in progress.
+- G2a passed: Echo coordinate metadata is surfaced through a real FUSE mount
+  via the local Echo rlib path; normal file bytes remain the G1 fixture source
+  pending G2b.
 
 ---
 

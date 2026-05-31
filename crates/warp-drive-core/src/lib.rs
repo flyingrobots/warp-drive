@@ -385,9 +385,12 @@ impl FixtureTree {
     /// Each entry is `(child_ino, name_bytes)`. Returns `None` if `ino` does
     /// not exist or is not a directory.
     #[must_use]
-    pub fn readdir_entries(&self, ino: Ino) -> Option<&[(Ino, Vec<u8>)]> {
+    pub fn readdir_entries(&self, ino: Ino) -> Option<impl Iterator<Item = (Ino, &[u8])> + '_> {
         match &self.nodes.get(&ino)?.content {
-            NodeContent::Children(c) => Some(c),
+            NodeContent::Children(c) => Some(
+                c.iter()
+                    .map(|(child_ino, name)| (*child_ino, name.as_slice())),
+            ),
             _ => None,
         }
     }

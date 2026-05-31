@@ -13,7 +13,14 @@
 # Usage: cargo xtask acceptance --runtime echo-rlib
 set -euo pipefail
 
-MOUNT=/tmp/warp-g2
+MOUNT=${WARP_DRIVE_ACCEPTANCE_MOUNT:-}
+MOUNT_CREATED=0
+if [ -z "$MOUNT" ]; then
+    MOUNT=$(mktemp -d "${TMPDIR:-/tmp}/warp-g2.XXXXXX")
+    MOUNT_CREATED=1
+else
+    mkdir -p "$MOUNT"
+fi
 PASS=0
 FAIL=0
 
@@ -86,6 +93,9 @@ cleanup() {
     if [ -n "${FUSE_PID:-}" ]; then
         kill "$FUSE_PID" 2>/dev/null || true
         wait "$FUSE_PID" 2>/dev/null || true
+    fi
+    if [ "$MOUNT_CREATED" -eq 1 ]; then
+        rm -rf "$MOUNT"
     fi
 }
 trap cleanup EXIT INT TERM

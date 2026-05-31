@@ -52,6 +52,7 @@ Two things that G1 deliberately deferred:
 
 **File content from Echo.** The current `warp-wasm` API returns
 `HeadObservation` which contains only:
+
 - `worldline_tick: WorldlineTick`
 - `commit_global_tick: Option<GlobalTick>`
 - `state_root: Vec<u8>` (32-byte Merkle root hash)
@@ -108,7 +109,7 @@ impl EchoBackend {
 
 ### 3.2 `EchoBackend::init()` sequence
 
-```
+```text
 1. warp_wasm::init_embedded()
      → EmbeddedHandle { worldline_id, head }
 
@@ -130,11 +131,13 @@ impl EchoBackend {
 ### 3.3 Updated `/.warp/coordinate` content
 
 G1 hardcoded:
+
 ```json
 {"worldline":"00000000-0000-0000-0000-000000000001","frontier":"genesis"}
 ```
 
 G2a serves real data from the observe response:
+
 ```json
 {
   "worldline": "<real 32-byte hex worldline UUID>",
@@ -149,11 +152,13 @@ G2a serves real data from the observe response:
 ### 3.4 Updated `/.warp/runtime` content
 
 G1:
+
 ```json
 {"kind":"in-memory","driver":"warp-drive-driver-memory","gate":"G1"}
 ```
 
 G2a (echo-rlib runtime):
+
 ```json
 {"kind":"echo-rlib","driver":"warp-wasm","gate":"G2a","worldline":"<hex>"}
 ```
@@ -208,29 +213,29 @@ into a published contract/runtime package.
 
 ## 4. Acceptance criteria
 
-The G2a acceptance run adds the following assertions to the existing 29:
+`scripts/acceptance-g2.sh` is the G2a acceptance artifact. It keeps the G1
+read-only fixture assertions and adds Echo-derived metadata assertions for
+`.warp/coordinate` and `.warp/runtime`.
 
-```sh
-# ── G2a-specific assertions ───────────────────────────────────────────────
+The script must pass all reported assertions. The accepted G2a transcript
+records `37 / 37` passing assertions.
 
-# .warp/coordinate must contain a real worldline (not the genesis placeholder)
-COORD=$(cat "$MOUNT/.warp/coordinate")
-assert_not_contains "$COORD" "00000000-0000-0000-0000-000000000001" \
-    ".warp/coordinate worldline is real (not genesis placeholder)"
+G2a-specific assertions prove:
 
-# .warp/coordinate must contain a non-zero state_root
-assert_contains "$COORD" '"state_root"' \
-    ".warp/coordinate has state_root field"
+- `/.warp/runtime` identifies `echo-rlib`.
+- `/.warp/coordinate` is valid JSON-shaped text for the Echo-backed run.
+- `worldline`, `state_root`, `frontier`, and `artifact_hash` fields are
+  present.
+- `state_root`, `frontier`, and `artifact_hash` are non-zero 64-character
+  lowercase hex values.
+- The coordinate is not the G1 genesis placeholder.
 
-# .warp/runtime must identify the echo-rlib backend
-RUNTIME=$(cat "$MOUNT/.warp/runtime")
-assert_contains "$RUNTIME" '"echo-rlib"' \
-    ".warp/runtime identifies echo-rlib backend"
+Non-goals for G2a:
 
-# All 29 G1 assertions still pass (file content unchanged)
-```
-
-Total: 29 + 3 = 32 assertions. Gate passes when all 32 exit 0.
+- G2a does not prove Echo-projected regular-file bytes.
+- G2a keeps the G1 fixture tree as the source for normal file content.
+- G2b must define the first acceptance that proves at least one non-`.warp`
+  file is served from Echo.
 
 ---
 
@@ -250,6 +255,7 @@ warp-drive/
 ```
 
 `warp-drive-echo-backend` depends on:
+
 - `warp-drive-core` (FixtureTree)
 - `warp-wasm` (path dep via `../echo-warp-drive`)
 - `echo-wasm-abi` (ObservationRequest types)
@@ -322,6 +328,7 @@ decisions made in G2a are all reused when projected file bytes are added.
 ## 10. Acceptance script location
 
 `scripts/acceptance-g2.sh` — a thin G2a wrapper over `scripts/acceptance.sh` that:
+
 1. Runs with `WARP_RUNTIME=echo-rlib` (or `--runtime=echo-rlib` flag)
 2. Replays the G1 read assertions against the Echo metadata mount
 3. Adds stricter G2a coordinate assertions for non-placeholder worldline,

@@ -6,7 +6,7 @@
 **Date:** 2026-05-31
 **Branch:** `gate/g2`
 **Validated commit:** `093f5c5` (acceptance proof strengthened and validated)
-**Gate record commit:** `d32254e` (acceptance transcript recorded)
+**Acceptance transcript commit:** `d32254e`
 **Status:** PASS
 **Command:** `cargo xtask acceptance --runtime=echo-rlib`
 **Runner:** Docker Desktop on macOS host, Linux container `rust:1.90`
@@ -66,7 +66,15 @@ docker run --rm \
   -v /Users/james/git:/work \
   -w /work/warp-drive \
   rust:1.90 \
-  bash -lc 'set -euo pipefail; export PATH=/usr/local/cargo/bin:$PATH; export DEBIAN_FRONTEND=noninteractive; apt-get update; apt-get install -y --no-install-recommends fuse3 ripgrep pkg-config libssl-dev; cargo xtask acceptance --runtime echo-rlib'
+  bash -lc '
+    set -euo pipefail
+    export PATH=/usr/local/cargo/bin:$PATH
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+      fuse3 ripgrep pkg-config libssl-dev
+    cargo xtask acceptance --runtime echo-rlib
+  '
 ```
 
 The first Docker attempt used `bash -lc` without explicitly prepending
