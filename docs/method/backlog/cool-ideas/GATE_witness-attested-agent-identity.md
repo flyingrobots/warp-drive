@@ -1,3 +1,10 @@
+---
+title: "Witness-attested AI agent identity"
+legend: GATE
+lane: cool-ideas
+priority: low
+---
+
 <!-- SPDX-License-Identifier: Apache-2.0 OR LicenseRef-MIND-UCAL-1.0 -->
 <!-- © James Ross Ω FLYING•ROBOTS <https://github.com/flyingrobots> -->
 
@@ -67,8 +74,7 @@ WARP DRIVE is uniquely positioned because:
 
 ## What it looks like in the schema
 
-A first sketch, extending the `warpdrive.graphql` from the
-[implementation plan](../../IMPLEMENTATION_PLAN.md#321-the-warp-drive-filesystem-contract-warpdrivegraphql):
+A first sketch, extending the `warpdrive.graphql` from the implementation plan:
 
 ```graphql
 """

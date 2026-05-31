@@ -1,3 +1,10 @@
+---
+title: "GitHub Actions CI for G1 acceptance"
+legend: INFRA
+lane: cool-ideas
+priority: medium
+---
+
 <!-- SPDX-License-Identifier: Apache-2.0 OR LicenseRef-MIND-UCAL-1.0 -->
 <!-- © James Ross Ω FLYING•ROBOTS <https://github.com/flyingrobots> -->
 
@@ -32,11 +39,10 @@ Docker image.
 The Dockerfile currently patches `Cargo.toml` at build time with `sed` to
 exclude `warp-drive-g0-spike` and its `../echo-warp-drive` path deps. This
 works but is fragile. Resolving the bad-code card
-[g0-spike-workspace-path-poison](../bad-code/g0-spike-workspace-path-poison.md)
-would let us delete the sed hacks, making the Dockerfile clean and the CI
-workflow straightforward.
+`GATE_silent-fuse-default-noop-methods` would let us delete the sed hacks,
+making the Dockerfile clean and the CI workflow straightforward.
 
 ## Surface when
 
-- Resolving `g0-spike-workspace-path-poison` (natural follow-on)
+- Resolving workspace path-poisoning from the g0-spike crate (natural follow-on)
 - Or whenever CI is a priority regardless

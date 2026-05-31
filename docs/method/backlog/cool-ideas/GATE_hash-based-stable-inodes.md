@@ -1,3 +1,10 @@
+---
+title: "Hash-based stable inode assignment for G3+ live projections"
+legend: GATE
+lane: cool-ideas
+priority: high
+---
+
 <!-- SPDX-License-Identifier: Apache-2.0 OR LicenseRef-MIND-UCAL-1.0 -->
 <!-- © James Ross Ω FLYING•ROBOTS <https://github.com/flyingrobots> -->
 
@@ -5,7 +12,7 @@
 
 **Status:** cool idea / pre-design. Surface before G3 scaffolding.
 
-Related bad-code card: [unstable-inode-assignment](../bad-code/unstable-inode-assignment.md)
+Related bad-code card: `GATE_unstable-inode-assignment`
 
 ## The idea
 
@@ -55,4 +62,4 @@ Hash-based assignment gives:
 ## Surface when
 
 Designing the G3 Echo projection adapter, before any inode assignment
-code is written.
+code is written for the live projection.

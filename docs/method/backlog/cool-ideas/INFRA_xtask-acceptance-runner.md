@@ -1,3 +1,10 @@
+---
+title: "`cargo xtask acceptance` — one-shot gate acceptance runner"
+legend: INFRA
+lane: cool-ideas
+priority: medium
+---
+
 <!-- SPDX-License-Identifier: Apache-2.0 OR LicenseRef-MIND-UCAL-1.0 -->
 <!-- © James Ross Ω FLYING•ROBOTS <https://github.com/flyingrobots> -->
 
