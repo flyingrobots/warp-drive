@@ -5,7 +5,8 @@
 
 **Date:** 2026-05-31
 **Branch:** `gate/g2`
-**Commit:** `093f5c5` (acceptance proof strengthened and validated)
+**Validated commit:** `093f5c5` (acceptance proof strengthened and validated)
+**Gate record commit:** `d32254e` (acceptance transcript recorded)
 **Status:** PASS
 **Command:** `cargo xtask acceptance --runtime=echo-rlib`
 **Runner:** Docker Desktop on macOS host, Linux container `rust:1.90`

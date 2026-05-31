@@ -3,9 +3,9 @@
 
 # G2a Design — Echo coordinate metadata mount
 
-**Gate:** G2a  
-**Branch:** `gate/g2`  
-**Status:** implementation  
+**Gate:** G2a
+**Branch:** `gate/g2`
+**Status:** implementation
 **Design date:** 2026-05-31
 
 ---
