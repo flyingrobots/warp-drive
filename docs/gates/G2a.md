@@ -5,7 +5,7 @@
 
 **Date:** 2026-05-31
 **Branch:** `gate/g2`
-**Validated commit:** `59b304d` (self-review fixes validated)
+**Validated commit:** `5cad3e2` (CI and worldline-proof fixes validated)
 **Acceptance transcript:** revalidated after self-review fixes
 **Status:** PASS
 **Command:** `cargo xtask acceptance --runtime=echo-rlib`
@@ -35,8 +35,8 @@ that file bytes are projected from Echo.
    `OkEnvelope<ObservationArtifact>` for the default worldline frontier.
 4. `/.warp/coordinate` contains Echo-derived `worldline`, `frontier`,
    `state_root`, `tick`, and `artifact_hash` fields.
-   Acceptance requires `frontier`, `state_root`, and `artifact_hash` to be
-   non-zero 64-character lowercase hex values.
+   Acceptance requires `worldline`, `frontier`, `state_root`, and
+   `artifact_hash` to be non-zero 64-character lowercase hex values.
 5. `/.warp/runtime` identifies the `echo-rlib` backend and `G2a` gate.
 6. The G1 POSIX read surface still works while metadata comes from Echo.
 
@@ -88,8 +88,8 @@ The first Docker attempt used `bash -lc` without explicitly prepending
 ```text
 === WARP DRIVE G2a acceptance ===
 
-Mounting at /tmp/warp-g2.JOsmy8 (echo-rlib backend) ...
-Mounted (fuse pid 967).
+Mounting at /tmp/warp-g2.9C8Fc3 (echo-rlib backend) ...
+Mounted (fuse pid 183).
 
 -- ls -----------------------------------------------------------------
   PASS  ls / contains README.md
@@ -115,6 +115,7 @@ Mounted (fuse pid 967).
 
 -- G2a coordinate assertions ------------------------------------------
   PASS  .warp/coordinate worldline is real (not genesis placeholder)
+  PASS  .warp/coordinate worldline is 64-char non-zero hex
   PASS  .warp/coordinate frontier is 64-char non-zero hex
   PASS  .warp/coordinate state_root is 64-char non-zero hex
   PASS  .warp/coordinate artifact_hash is 64-char non-zero hex
@@ -145,7 +146,7 @@ Mounted (fuse pid 967).
   PASS  create newfile.txt correctly rejected (EROFS)
 
 ========================================================================
-G2a GATE PASSED  (37 / 37 assertions)
+G2a GATE PASSED  (38 / 38 assertions)
 ```
 
 ---
