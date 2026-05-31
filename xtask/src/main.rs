@@ -10,6 +10,7 @@
 //! | `install-deps` | Install macFUSE via Homebrew (macOS only, no-op elsewhere)|
 //! | `mount`        | Build and mount the WARP DRIVE FUSE filesystem            |
 //! | `unmount`      | Unmount the WARP DRIVE FUSE filesystem                    |
+//! | `acceptance`   | Build Docker image and run the G1 gate acceptance test    |
 
 // xtask is a developer CLI — printing to stdout/stderr is intentional.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
@@ -53,6 +54,17 @@ enum Task {
         #[arg(long, short)]
         path: PathBuf,
     },
+
+    /// Build the Docker acceptance image and run the G1 gate test.
+    ///
+    /// Equivalent to:
+    ///   docker build -t warp-drive-g1 .
+    ///   docker run --rm --device /dev/fuse --cap-add SYS_ADMIN warp-drive-g1
+    Acceptance {
+        /// Docker image tag to use.
+        #[arg(long, default_value = "warp-drive-g1")]
+        tag: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -61,6 +73,7 @@ fn main() -> ExitCode {
         Task::InstallDeps => install_deps(),
         Task::Mount { path } => mount(&path),
         Task::Unmount { path } => unmount(&path),
+        Task::Acceptance { tag } => acceptance(&tag),
     };
 
     match result {
@@ -125,6 +138,23 @@ fn unmount_impl(path: &Path) -> Result<(), String> {
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn unmount_impl(_path: &Path) -> Result<(), String> {
     Err("unmount is not supported on this platform".to_owned())
+}
+
+// ── acceptance ───────────────────────────────────────────────────────────────
+
+fn acceptance(tag: &str) -> Result<(), String> {
+    println!("Building Docker image `{tag}`...");
+    run("docker", &["build", "-t", tag, "."])?;
+    println!("Running G1 acceptance test in Docker...");
+    run(
+        "docker",
+        &[
+            "run", "--rm",
+            "--device", "/dev/fuse",
+            "--cap-add", "SYS_ADMIN",
+            tag,
+        ],
+    )
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
