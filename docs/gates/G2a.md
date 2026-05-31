@@ -3,10 +3,13 @@
 
 # Gate G2a — Echo coordinate metadata mount
 
-**Date:** 2026-05-31  
-**Branch:** `gate/g2`  
-**Status:** implementation pending acceptance  
-**Command:** `cargo xtask acceptance --runtime=echo-rlib`  
+**Date:** 2026-05-31
+**Branch:** `gate/g2`
+**Commit:** `093f5c5` (acceptance proof strengthened and validated)
+**Status:** PASS
+**Command:** `cargo xtask acceptance --runtime=echo-rlib`
+**Runner:** Docker Desktop on macOS host, Linux container `rust:1.90`
+with `/Users/james/git` mounted at `/work`
 
 ---
 
@@ -48,3 +51,99 @@ that file bytes are projected from Echo.
 
 Full Echo-projected file bytes belong to the next gate, currently named G2b/G3
 in the design notes.
+
+---
+
+## Acceptance Run
+
+The gate was run inside Linux Docker with both sibling repositories visible:
+
+```sh
+docker run --rm \
+  --device /dev/fuse \
+  --cap-add SYS_ADMIN \
+  -v /Users/james/git:/work \
+  -w /work/warp-drive \
+  rust:1.90 \
+  bash -lc 'set -euo pipefail; export PATH=/usr/local/cargo/bin:$PATH; export DEBIAN_FRONTEND=noninteractive; apt-get update; apt-get install -y --no-install-recommends fuse3 ripgrep pkg-config libssl-dev; cargo xtask acceptance --runtime echo-rlib'
+```
+
+The first Docker attempt used `bash -lc` without explicitly prepending
+`/usr/local/cargo/bin` to `PATH`; that failed before acceptance with
+`cargo: command not found`. The command above is the successful gate run.
+
+---
+
+## Acceptance Transcript
+
+```text
+=== WARP DRIVE G2a acceptance ===
+
+Mounting at /tmp/warp-g2 (echo-rlib backend) ...
+Mounted (fuse pid 2906).
+
+-- ls -----------------------------------------------------------------
+  PASS  ls / contains README.md
+  PASS  ls / contains package.json
+  PASS  ls / contains src/
+  PASS  ls / contains empty/
+  PASS  ls / contains links/
+  PASS  ls / contains .warp/
+
+-- cat ----------------------------------------------------------------
+  PASS  README.md first line
+  PASS  package.json name field
+  PASS  src/main.ts export
+  PASS  src/lib.ts export
+  PASS  .warp/coordinate has worldline field
+  PASS  .warp/coordinate has frontier field
+  PASS  .warp/coordinate has state_root field
+  PASS  .warp/coordinate has artifact_hash field
+  PASS  .warp/coordinate identifies gate G2a
+  PASS  .warp/runtime kind is echo-rlib
+  PASS  .warp/runtime gate is G2a
+  PASS  .warp/stats gate is G2a
+
+-- G2a coordinate assertions ------------------------------------------
+  PASS  .warp/coordinate worldline is real (not genesis placeholder)
+  PASS  .warp/coordinate frontier is 64-char non-zero hex
+  PASS  .warp/coordinate state_root is 64-char non-zero hex
+  PASS  .warp/coordinate artifact_hash is 64-char non-zero hex
+  PASS  .warp/coordinate backend is echo-rlib
+
+-- find ---------------------------------------------------------------
+  PASS  find sees src/main.ts
+  PASS  find sees src/lib.ts
+  PASS  find sees .warp/coordinate
+  PASS  find sees empty/
+  PASS  find sees links/readme
+
+-- rg -----------------------------------------------------------------
+  PASS  rg finds export in main.ts
+  PASS  rg finds export in lib.ts
+  PASS  rg found 2 export hits (>= 2)
+
+-- stat ---------------------------------------------------------------
+  PASS  stat shows inode 5 for src/main.ts
+  PASS  stat shows regular file
+
+-- readlink -----------------------------------------------------------
+  PASS  links/readme -> ../README.md
+  PASS  symlink resolves to README.md
+
+-- write rejection ----------------------------------------------------
+  PASS  write to README.md correctly rejected (EROFS)
+  PASS  create newfile.txt correctly rejected (EROFS)
+
+========================================================================
+G2a GATE PASSED  (37 / 37 assertions)
+```
+
+---
+
+## Caveats
+
+- File content is still seeded from the G1 fixture tree. G2a proves Echo
+  coordinate metadata integration, not Echo-projected file bytes.
+- The local Echo gate requires a sibling `../echo-warp-drive` checkout. Default
+  workspace builds remain Echo-free.
