@@ -210,16 +210,16 @@ assert_contains "$ECHO_HEAD" '"source":"echo-observation-payload"' "/echo/head.j
 assert_contains "$ECHO_HEAD" '"worldline"' "/echo/head.json has worldline field"
 assert_contains "$ECHO_HEAD" '"frontier"' "/echo/head.json has frontier field"
 assert_contains "$ECHO_HEAD" '"state_root"' "/echo/head.json has state_root field"
-assert_contains "$ECHO_HEAD" '"artifact_hash"' "/echo/head.json has artifact_hash field"
+assert_contains "$ECHO_HEAD" '"projection_hash"' "/echo/head.json has projection_hash field"
 
 ECHO_WORLDLINE_VALUE=$(json_hex_value "$ECHO_HEAD" "worldline" || true)
 ECHO_FRONTIER_VALUE=$(json_hex_value "$ECHO_HEAD" "frontier" || true)
 ECHO_STATE_ROOT_VALUE=$(json_hex_value "$ECHO_HEAD" "state_root" || true)
-ECHO_ARTIFACT_HASH_VALUE=$(json_hex_value "$ECHO_HEAD" "artifact_hash" || true)
+ECHO_PROJECTION_HASH_VALUE=$(json_hex_value "$ECHO_HEAD" "projection_hash" || true)
 assert_nonzero_hex64 "$ECHO_WORLDLINE_VALUE" "/echo/head.json worldline is 64-char non-zero hex"
 assert_nonzero_hex64 "$ECHO_FRONTIER_VALUE" "/echo/head.json frontier is 64-char non-zero hex"
 assert_nonzero_hex64 "$ECHO_STATE_ROOT_VALUE" "/echo/head.json state_root is 64-char non-zero hex"
-assert_nonzero_hex64 "$ECHO_ARTIFACT_HASH_VALUE" "/echo/head.json artifact_hash is 64-char non-zero hex"
+assert_nonzero_hex64 "$ECHO_PROJECTION_HASH_VALUE" "/echo/head.json projection_hash is 64-char non-zero hex"
 assert_eq "$ECHO_WORLDLINE_VALUE" "$WORLDLINE_VALUE" "/echo/head.json worldline matches .warp/coordinate"
 assert_eq "$ECHO_FRONTIER_VALUE" "$FRONTIER_VALUE" "/echo/head.json frontier matches .warp/coordinate"
 assert_eq "$ECHO_STATE_ROOT_VALUE" "$STATE_ROOT_VALUE" "/echo/head.json state_root matches .warp/coordinate"

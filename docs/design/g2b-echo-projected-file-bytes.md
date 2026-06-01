@@ -70,7 +70,7 @@ Expected JSON shape:
   "worldline": "<64 hex>",
   "frontier": "<64 hex>",
   "state_root": "<64 hex>",
-  "artifact_hash": "<64 hex>"
+  "projection_hash": "<64 hex>"
 }
 ```
 
@@ -78,11 +78,10 @@ The `source` field is part of the proof boundary. If the file is produced by
 WARP DRIVE from cached G2a coordinate metadata, the value must not be
 `echo-observation-payload`, and the gate must not pass.
 
-The `artifact_hash` field in this file is not the self-hash of the final query
-`ObservationArtifact`; that value cannot be embedded in its own payload before
-Echo computes it. For the G2b scaffold, `artifact_hash` is an Echo-side
-projection hash derived by the query observer from the resolved worldline,
-frontier, and state root.
+The `projection_hash` field in this file is an Echo-side projection hash
+derived by the query observer from the resolved worldline, frontier, and state
+root. It is not the self-hash of the final query `ObservationArtifact`; that
+value cannot be embedded in its own payload before Echo computes it.
 
 ## Echo ABI path
 
@@ -109,11 +108,11 @@ cached coordinate metadata just to avoid an Echo change.
 
 Implementation choice:
 
-1. Query id: `warp_wasm::WARP_DRIVE_G2B_HEAD_QUERY_ID`.
-2. Vars bytes: `warp_wasm::WARP_DRIVE_G2B_HEAD_QUERY_VARS`, currently the
-   canonical byte string `{"path":"/echo/head.json"}`.
-3. Observer location: `warp-wasm`'s native engine kernel, registered during
-   `init_embedded()` through Echo's existing contract query observer path.
+1. Query id: `warp_wasm::experimental_warp_drive_g2b::HEAD_QUERY_ID`.
+2. Vars bytes: `warp_wasm::experimental_warp_drive_g2b::HEAD_QUERY_VARS`,
+   currently the canonical byte string `{"projection":"g2b-head","version":1}`.
+3. Observer location: `warp-wasm`'s native engine kernel, registered only when
+   the explicit `experimental-warp-drive-g2b` feature is enabled.
 4. Payload source: `ObservationPayload::QueryBytes { data }`.
 
 ## Threading model
@@ -184,7 +183,7 @@ Acceptance must keep the G1 baseline:
 Acceptance must keep the G2a baseline:
 
 1. `/.warp/coordinate` contains `worldline`, `frontier`, `state_root`, and
-   `artifact_hash`.
+   `projection_hash`.
 2. Those hashes are non-zero 64-character lowercase hex strings.
 3. `/.warp/runtime` identifies `echo-rlib`.
 
@@ -199,7 +198,7 @@ Acceptance must add the G2b proof:
 7. The JSON contains `"gate":"G2b"`.
 8. The JSON contains `"source":"echo-observation-payload"`.
 9. The JSON contains `worldline`, `frontier`, `state_root`, and
-   `artifact_hash`.
+   `projection_hash`.
 10. Those values match, or are explicitly documented as consistent with,
     `/.warp/coordinate`.
 11. `rg` finds `echo-projected-file` in `/echo/head.json`.

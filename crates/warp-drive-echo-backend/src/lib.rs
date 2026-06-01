@@ -256,8 +256,8 @@ fn observe_echo_head_file(
         },
         ObservationFrame::QueryView,
         ObservationProjection::Query {
-            query_id: warp_wasm::WARP_DRIVE_G2B_HEAD_QUERY_ID,
-            vars_bytes: warp_wasm::WARP_DRIVE_G2B_HEAD_QUERY_VARS.to_vec(),
+            query_id: warp_wasm::experimental_warp_drive_g2b::HEAD_QUERY_ID,
+            vars_bytes: warp_wasm::experimental_warp_drive_g2b::HEAD_QUERY_VARS.to_vec(),
         },
     )
     .map_err(|err| EchoBackendError::BuildRequest(format!("{err:?}")))?;

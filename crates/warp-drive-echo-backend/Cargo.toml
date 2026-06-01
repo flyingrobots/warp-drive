@@ -15,4 +15,4 @@ publish      = false
 warp-drive-core = { path = "../warp-drive-core" }
 
 echo-wasm-abi = { path = "../../../echo-warp-drive/crates/echo-wasm-abi" }
-warp-wasm     = { path = "../../../echo-warp-drive/crates/warp-wasm", features = ["engine"] }
+warp-wasm     = { path = "../../../echo-warp-drive/crates/warp-wasm", features = ["engine", "experimental-warp-drive-g2b"] }
