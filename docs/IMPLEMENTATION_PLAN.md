@@ -412,7 +412,7 @@ docs and schemas are self-contained.
 ### 3.5 Milestones
 
 - **W1.M1**: `warpdrive.graphql` written and successfully generates Rust
-  + TS via existing Wesley pipeline
+  and TS via existing Wesley pipeline
 - **W1.M2**: Frontier-advance subscription protocol specified
 - **W1.M3**: `continuum-v1.md` spec document complete
 
@@ -873,16 +873,19 @@ Combining the workstream milestones into shipping moments:
 Goal: answer the load-bearing unknowns before any protocol ceremony begins.
 
 **G-1 repo hygiene (hours, not days):**
+
 - LICENSE matches all SPDX headers
 - Crate and repo naming locked
 - README states experimental status
 
 **G0 — embedding spike:** ✅ DONE
+
 - `warp-wasm` embeds as a native Rust rlib — no wasm runtime needed
 - `init_embedded()` + `observe_cbor()` round-trip from outside the echo workspace
 - See `docs/gates/G0.md` for the full finding
 
 **G1 — in-memory FUSE fake tree:**
+
 - Cargo workspace scaffolded with empty crates
 - In-memory driver exposes hardcoded fixture tree (see §11.6)
 - `ls`, `cat`, `find`, `rg` all work against it
@@ -1264,9 +1267,10 @@ condition is demonstrably true.
 | Gate | Condition | Why it comes first |
 |---|---|---|
 | **G0** | ✅ Native Rust binary links warp-wasm as an rlib; `init_embedded()` initializes the engine kernel; one `observe_cbor()` round-trips from outside the echo workspace | **DONE.** rlib embedding is the correct v0.0.1 surface. The wasm32 artifact uses wasm-bindgen ABI and is not directly loadable by plain wasmtime without host shims — that is not the embedding path for v0.0.1. |
-| **G1** | In-memory FUSE mount: `ls`, `cat`, `rg` on a fake hardcoded tree | Proves POSIX translation, inode strategy, `.warp/` surface — without Echo's complexity. |
-| **G2** | Echo read-only mount: real coordinate, real `observe` | Proves membrane + Echo integration end-to-end. |
-| **G3** | `.warp/` diagnostics + perf counters readable | Without diagnostics, every bug is a haunted filesystem. |
+| **G1** | ✅ In-memory FUSE mount: `ls`, `cat`, `rg` on a fake hardcoded tree | **DONE.** Proves POSIX translation, inode strategy, `.warp/` surface — without Echo's complexity. |
+| **G2a** | ✅ Echo coordinate metadata mount: real coordinate, real `observe` | **DONE.** Proves embedded Echo can be initialized before FUSE and surface real coordinate metadata. |
+| **G2b** | ✅ First Echo-projected regular-file bytes | **DONE.** Proves one normal file, `/echo/head.json`, can be served from Echo `QueryBytes` without claiming a full filesystem projection. |
+| **G3** | `.warp/` diagnostics + perf counters readable | **ACTIVE NEXT.** Without diagnostics, every bug is a haunted filesystem. |
 | **G4** | Whole-file writes admitted via basis-tracking | Simplest write path; diff complexity deferred. |
 | **G5** | Stale-basis obstruction + receipt UX | The moral centre of the project. Must feel good. |
 | **G6** | `create`, `unlink`, `rename` working | Only after write receipts are solid. |
@@ -1276,8 +1280,9 @@ condition is demonstrably true.
 ```mermaid
 flowchart TD
     G0["✅ G0: rlib embedding<br />init_embedded + observe_cbor"]
-    G1["G1: In-memory FUSE<br />read-only fake tree"]
-    G2["G2: Echo FUSE<br />read-only real coordinate"]
+    G1["✅ G1: In-memory FUSE<br />read-only fake tree"]
+    G2a["✅ G2a: Echo coordinate<br />metadata mount"]
+    G2b["✅ G2b: Echo-projected<br />regular-file bytes"]
     G3["G3: .warp/ diagnostics<br />+ perf counters"]
     G4["G4: Whole-file writes<br />with basis tracking"]
     G5["G5: Stale-basis obstruction<br />+ receipt UX"]
@@ -1286,8 +1291,9 @@ flowchart TD
     G8["G8: Second driver<br />passes membrane tests"]
 
     G0 --> G1
-    G1 --> G2
-    G2 --> G3
+    G1 --> G2a
+    G2a --> G2b
+    G2b --> G3
     G3 --> G4
     G4 --> G5
     G5 --> G6
@@ -1311,6 +1317,17 @@ in-memory runtime with three hardcoded files proves the POSIX
 translation layer, the inode synthesizer, the cache, and the `.warp/`
 synthetic surface — without Echo's complexity. Pull the in-memory
 driver forward from G8 to G1.
+
+**G2a and G2b are done.** G2a proved Echo coordinate metadata through a
+real FUSE mount. G2b proved one normal read-only file,
+`/echo/head.json`, whose bytes come from Echo `QueryBytes`. Do not spend
+the next gate proving a second projected file. The next bottleneck is
+observability.
+
+**G3 is now active.** It should make `/.warp/stats` and `/.warp/runtime`
+trustworthy enough that known POSIX operations produce explainable
+before/after counter changes. Avoid exact syscall counts unless the
+kernel/FUSE noise is under direct control.
 
 **G5 is the product.** A stale write that fails with a well-formed
 receipt under `/.warp/intents/` is the moment the project's moral
@@ -1342,14 +1359,16 @@ Document this clearly for users of write-mode mounts.
 WARP DRIVE does not implement all POSIX. The table below splits the
 committed subset by release. v0.0.1 is read-only. Writes ship with v0.1.
 
-**v0.0.1 / G2 — read-only subset:**
+**v0.0.1 / G2a-G2b — read-only subset:**
 
-| Operation | Status |
-|---|---|
-| `stat`, `lstat` | ✅ |
-| `opendir`, `readdir` | ✅ |
-| `open(O_RDONLY)`, `read` | ✅ |
-| `symlink`, `readlink` | ✅ |
+| Operation | Gate | Status |
+|---|---|---|
+| `stat`, `lstat` | G1/G2a/G2b | ✅ |
+| `opendir`, `readdir` | G1/G2a/G2b | ✅ |
+| `open(O_RDONLY)`, `read` for fixture paths | G1/G2a/G2b | ✅ |
+| `open(O_RDONLY)`, `read` for `/echo/head.json` | G2b | ✅ |
+| `symlink`, `readlink` | G1/G2a/G2b | ✅ |
+| `/.warp/coordinate`, `/.warp/runtime` | G2a/G2b | ✅ |
 
 **v0.1 / G4–G8 — write + multi-lane subset:**
 
@@ -1377,7 +1396,7 @@ committed subset by release. v0.0.1 is read-only. Writes ship with v0.1.
 Build and maintain this. Mark each tool at each gate. Unexplained
 failures are bugs; understood failures are product decisions.
 
-| Tool | G2 (read) | G4 (write) | G6 (full) | Notes |
+| Tool | G2a/G2b (read) | G4 (write) | G6 (full) | Notes |
 |---|---|---|---|---|
 | `ls` | 🎯 | – | – | |
 | `cat` | 🎯 | – | – | |
@@ -1407,23 +1426,26 @@ Legend: 🎯 target (must work at this gate), ✅ verified, ❌ not supported by
 #### MUST
 
 - ~~**Spike G0 before anything else.**~~ **G0 is done** — see
-  `docs/gates/G0.md`. rlib embedding works. Proceed to G1.
-- **Build the in-memory driver at G1, not G8.** Deterministic tests,
-  isolation from Echo readiness, proof that the driver trait is real.
+  `docs/gates/G0.md`. rlib embedding works.
+- ~~**Build the in-memory driver at G1, not G8.**~~ **G1 is done** —
+  deterministic POSIX translation is proven.
+- **Make G3 observability boring before expanding projection breadth.**
+  G2b proved first Echo-projected bytes. The next gate should make the
+  membrane inspectable, not merely add more projected files.
 - **Define inode stability as law.** See §11.2.1.
 - **Define fsync semantics explicitly.** See §11.2.2.
 - **Make stale-basis failure beautiful.** The receipt under
   `/.warp/intents/last` is the project's differentiator. It should make
   users say: *the filesystem knows what happened.*
-- **Maintain the tool compatibility matrix.** Start at G2; update at
-  every gate.
+- **Maintain the tool compatibility matrix.** G2a/G2b started it; update
+  at every gate.
 
 #### SHOULD
 
-- **Ship read-only (G2) as fast as possible.** Read-only WARP DRIVE is
-  already useful for historical inspection and coordinate browsing.
-  Writes are where complexity explodes.
-- **Put performance counters in from day one.** Count LOOKUP, GETATTR,
+- ~~**Ship read-only (G2) as fast as possible.**~~ G2a/G2b are shipped:
+  real Echo metadata plus one Echo-projected regular file. Writes are
+  where complexity explodes.
+- **Put performance counters in now.** Count LOOKUP, GETATTR,
   READDIR, cache hits/misses, runtime calls, average observe latency.
   Otherwise perf debugging becomes séance-driven engineering.
 - **Keep Continuum minimal until the second driver hurts.** A protocol
@@ -1451,8 +1473,9 @@ Legend: 🎯 target (must work at this gate), ✅ verified, ❌ not supported by
 
 #### DON'T
 
-- **DON'T build the daemon before G0 proves embedding impossible.**
-  Embedding first; daemon only if embedding is grotesque.
+- **DON'T resurrect the daemon fallback without a fresh reproduced blocker.**
+  G0 proved native rlib embedding; daemon work now needs an explicit gate or a
+  concrete failure in the rlib path.
 - **DON'T let build-artifact projections into v0.1.** Cool idea; black
   hole. Stays in the backlog.
 - **DON'T use "Git replacement" language before G8.** The early message
@@ -1485,6 +1508,26 @@ The full diagnostic surface targeted for G3+:
 `/.warp/stats` is the observable heartbeat. If WARP DRIVE feels slow
 and you cannot explain why, `watch cat /.warp/stats` should give an
 answer within 30 seconds.
+
+G3's minimum stats surface should start with monotonic counters that are
+useful without pretending FUSE syscall counts are perfectly deterministic:
+
+```text
+lookup_count
+getattr_count
+readdir_count
+open_count
+read_count
+readlink_count
+cache_hit_count
+cache_miss_count
+runtime_observe_count
+runtime_observe_error_count
+```
+
+Acceptance should compare before/after snapshots and require expected
+counters to move in the correct direction. It should not require exact
+counts unless the runner proves kernel/FUSE noise is controlled.
 
 ### 11.6 Golden fake-tree fixture
 
@@ -1530,13 +1573,12 @@ If any of these fail, G1 is not done. No gate advances until all pass.
 The plan is concrete enough to be wrong in specific places. That is
 preferable to being abstract enough to be unfalsifiable.
 
-The single most load-bearing question is W2.M4 — can `warp-wasm` be
-loaded outside of a browser/wasm-host context as an embedded library
-inside a Rust FUSE binary? If the answer is yes (likely), the rest
-of the plan is mechanical work and the v0.0.1 ship date is bounded by
-how fast the basis-discipline handlers get tested. If the answer is
-no, the plan reshapes around an Echo daemon, which adds 1-2 weeks but
-doesn't kill the project.
+The single most load-bearing embedding question was W2.M4. G0 closed it:
+`warp-wasm` embeds cleanly as a native Rust rlib inside a Rust FUSE process.
+The remaining execution risk is delivery quality and pace across filesystem
+handlers, observability, and basis-discipline correctness. The v0.0.1 ship date
+is now bounded by test depth and integration stability, not runtime-host
+feasibility.
 
 ~~Recommended first move: spike W2.M4 before committing to anything
 else.~~ **G0 is done** — rlib embedding works cleanly. Build out the

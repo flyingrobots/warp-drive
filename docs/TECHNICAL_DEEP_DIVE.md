@@ -567,8 +567,13 @@ the substrate:
 ```
 
 This is a deliberate, named surface — not a leak. Tools that want to be
-WARP-aware (Graft, jedit, etcwhich already know about coordinates and
-optics) can read here. Tools that don't care can ignore `.warp/` entirely.
+WARP-aware (Graft, jedit, etc.) can read here. Tools that don't care can ignore
+`/.warp/` entirely.
+
+After G2b, the next WARP DRIVE gate is not "project another file." It is G3:
+make this `/.warp/` surface trustworthy enough that the membrane can explain its
+own behavior through live counters, runtime diagnostics, and typed failure
+signals before write semantics arrive.
 
 ---
 
@@ -905,6 +910,7 @@ Every obstruction type produces a typed receipt. If receipts are a
 product surface they deserve canonical examples.
 
 **POLICY_DENIAL** — capability insufficient for this operation:
+
 ```json
 {
   "id": "01HZX2J7P3KQE6V9NHTW4M5RBB",
@@ -918,6 +924,7 @@ product surface they deserve canonical examples.
 ```
 
 **DEFERRED_ADMISSION** — runtime cannot decide synchronously:
+
 ```json
 {
   "id": "01HZX2J7P3KQE6V9NHTW4M5RBC",
@@ -929,6 +936,7 @@ product surface they deserve canonical examples.
 ```
 
 **MISSING_EVIDENCE** — runtime needs a witness it cannot produce:
+
 ```json
 {
   "id": "01HZX2J7P3KQE6V9NHTW4M5RBD",
@@ -941,6 +949,7 @@ product surface they deserve canonical examples.
 ```
 
 **NOT_IMPLEMENTED** — runtime does not support the operation:
+
 ```json
 {
   "id": "01HZX2J7P3KQE6V9NHTW4M5RBE",
@@ -953,6 +962,7 @@ product surface they deserve canonical examples.
 ```
 
 **INVALID_DELTA** — the write was structurally incoherent:
+
 ```json
 {
   "id": "01HZX2J7P3KQE6V9NHTW4M5RBF",

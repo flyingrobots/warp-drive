@@ -305,6 +305,7 @@ Deleted: sha256:071f93127b1e5b7cfc2b9e35fd945a48b4d2f83e972463fe7f3d77737acf2528
 
 ## Next Gate Direction
 
-The next gate should move from one projected file toward an Echo-projected
-directory/content contract. It should not add more metadata-only surface area
-unless that surface is required to prove projected reads.
+The next gate is G3 — `.warp/` diagnostics + perf counters. It should make the
+membrane observable before expanding projection breadth. G2b proved first
+Echo-projected regular-file bytes; G3 should prove that known POSIX operations
+move trustworthy diagnostics and counters in explainable ways.
