@@ -9,9 +9,9 @@
 
 **Branch:** `gate/g2b`
 
-**WARP DRIVE validated commit:** `84077f927ee5`
+**WARP DRIVE validated commit:** `82a9fdc24484`
 
-**Echo validated commit:** `0d413315ba23`
+**Echo validated commit:** `263c553257af`
 
 **Command:**
 
@@ -77,12 +77,14 @@ G2b depends on an Echo-side scaffold in `warp-wasm`.
 Validated Echo commit:
 
 ```text
-0d413315ba23 feat(warp-wasm): add WARP DRIVE G2b query projection
+263c553257af refactor(warp-wasm): fence WARP DRIVE G2b query scaffold
 ```
 
-That commit registers a temporary WARP DRIVE G2b query observer during native
-`init_embedded()`. The observer handles the G2b query id and returns the
-`/echo/head.json` payload through `ObservationPayload::QueryBytes`.
+That commit fences the temporary WARP DRIVE G2b query observer behind Echo's
+explicit, non-default `experimental-warp-drive-g2b` feature. When that feature
+is enabled, native `init_embedded()` registers the observer. The observer handles
+the G2b query id and returns the `/echo/head.json` payload through
+`ObservationPayload::QueryBytes`.
 
 This is a scaffold query observer, not the final filesystem contract.
 
@@ -104,14 +106,14 @@ Required payload shape:
   "worldline": "<64 hex>",
   "frontier": "<64 hex>",
   "state_root": "<64 hex>",
-  "artifact_hash": "<64 hex>"
+  "projection_hash": "<64 hex>"
 }
 ```
 
 The `source` field is part of the gate proof. It distinguishes Echo-produced
 query payload bytes from WARP DRIVE-local formatting of coordinate metadata.
 
-The `artifact_hash` inside `/echo/head.json` is an Echo-side projection hash
+The `projection_hash` inside `/echo/head.json` is an Echo-side projection hash
 derived by the query observer from the resolved worldline, frontier, and state
 root. It is not the self-hash of the final query `ObservationArtifact`, because
 that value cannot be embedded in its own payload before Echo computes the
@@ -144,7 +146,7 @@ Copy-in acceptance isolation:
 
 ## Validation Commands
 
-WARP DRIVE validation at `84077f927ee5`:
+WARP DRIVE validation at `82a9fdc24484`:
 
 ```sh
 cargo fmt --all
@@ -156,12 +158,16 @@ cargo clippy --workspace -- -D warnings
 cargo clippy --manifest-path crates/warp-drive-fuse-echo/Cargo.toml --target-dir target/echo-rlib -- -D warnings
 ```
 
-Echo validation at `0d413315ba23`:
+Echo validation at `263c553257af`:
 
 ```sh
 cargo fmt --manifest-path crates/warp-wasm/Cargo.toml
 cargo check --manifest-path crates/warp-wasm/Cargo.toml --features engine
 cargo clippy --manifest-path crates/warp-wasm/Cargo.toml --features engine -- -D warnings
+cargo test --manifest-path crates/warp-wasm/Cargo.toml --features engine --lib default_engine_tests
+cargo check --manifest-path crates/warp-wasm/Cargo.toml --features experimental-warp-drive-g2b
+cargo clippy --manifest-path crates/warp-wasm/Cargo.toml --features experimental-warp-drive-g2b -- -D warnings
+cargo test --manifest-path crates/warp-wasm/Cargo.toml --features experimental-warp-drive-g2b --lib experimental_warp_drive_g2b_tests
 ```
 
 All validation commands passed.
@@ -177,7 +183,7 @@ cargo xtask acceptance --gate g2b --runtime echo-rlib
 Runner setup:
 
 ```text
-Building Docker image `warp-drive-g2b-echo-copyin-35957-1780287556987` from sanitized copies (no bind mounts)...
+Building Docker image `warp-drive-g2b-echo-copyin-59474-1780292047393` from sanitized copies (no bind mounts)...
 Running g2b echo-rlib acceptance in copy-in Docker container...
 Copy-in acceptance isolation:
   PASS no git metadata in copied repos
@@ -185,8 +191,8 @@ Building local-only warp-drive-fuse Echo binary...
 Running g2b echo-rlib acceptance script...
 === WARP DRIVE G2b acceptance ===
 
-Mounting at /tmp/warp-g2b.19ADJy (echo-rlib backend, G2b gate) ...
-Mounted (fuse pid 2776).
+Mounting at /tmp/warp-g2b.HMEWRX (echo-rlib backend, G2b gate) ...
+Mounted (fuse pid 2786).
 ```
 
 Acceptance assertions:
@@ -231,11 +237,11 @@ Acceptance assertions:
   PASS  /echo/head.json has worldline field
   PASS  /echo/head.json has frontier field
   PASS  /echo/head.json has state_root field
-  PASS  /echo/head.json has artifact_hash field
+  PASS  /echo/head.json has projection_hash field
   PASS  /echo/head.json worldline is 64-char non-zero hex
   PASS  /echo/head.json frontier is 64-char non-zero hex
   PASS  /echo/head.json state_root is 64-char non-zero hex
-  PASS  /echo/head.json artifact_hash is 64-char non-zero hex
+  PASS  /echo/head.json projection_hash is 64-char non-zero hex
   PASS  /echo/head.json worldline matches .warp/coordinate
   PASS  /echo/head.json frontier matches .warp/coordinate
   PASS  /echo/head.json state_root matches .warp/coordinate
@@ -274,8 +280,8 @@ G2b GATE PASSED  (58 / 58 assertions)
 Cleanup:
 
 ```text
-Untagged: warp-drive-g2b-echo-copyin-35957-1780287556987:latest
-Deleted: sha256:a893da740a6d41f31dd3fe51bb3f58a83834ae475515f9798e62a2cfa3f62921
+Untagged: warp-drive-g2b-echo-copyin-59474-1780292047393:latest
+Deleted: sha256:0ac1da577a51f74254aab04fd791fdc2b5829fbcf1dbb8c313b48256589fd7c9
 ```
 
 ## Caveats
@@ -283,7 +289,8 @@ Deleted: sha256:a893da740a6d41f31dd3fe51bb3f58a83834ae475515f9798e62a2cfa3f62921
 1. Only `/echo/head.json` is Echo-projected.
 2. G1 fixture files remain fixture-backed.
 3. G1 fixture directories remain fixture-backed.
-4. The Echo query observer is a G2b scaffold.
+4. The Echo query observer is a G2b scaffold behind Echo's explicit
+   `experimental-warp-drive-g2b` feature.
 5. The final filesystem contract still belongs to a later gate.
 6. The local Echo gate still requires a sibling `../echo-warp-drive` checkout
    before the copy-in Docker image is built.
