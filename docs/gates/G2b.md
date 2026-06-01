@@ -173,6 +173,11 @@ cargo test --manifest-path crates/warp-wasm/Cargo.toml --all-features
 
 All validation commands passed.
 
+The 60 / 60 acceptance run used Echo branch head `1b27c577cf5a`. The only
+delta after validated Echo commit `d8da6d0478bb` is a comment-only TODO
+documenting the temporary `CODEC_ERROR` invalid-vars assertion until Echo's ABI
+exposes a more precise query-vars error code.
+
 ## Acceptance Transcript
 
 Command:
