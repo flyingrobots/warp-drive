@@ -9,7 +9,7 @@
 
 **Branch:** `gate/g2b`
 
-**WARP DRIVE validated commit:** `82a9fdc24484`
+**WARP DRIVE validated commit:** `edd5235f6287`
 
 **Echo validated commit:** `d8da6d0478bb`
 
@@ -19,7 +19,7 @@
 cargo xtask acceptance --gate g2b --runtime echo-rlib
 ```
 
-**Result:** 58 / 58 assertions passed.
+**Result:** 60 / 60 assertions passed.
 
 ## Gate Condition
 
@@ -146,7 +146,7 @@ Copy-in acceptance isolation:
 
 ## Validation Commands
 
-WARP DRIVE validation at `82a9fdc24484`:
+WARP DRIVE validation at `edd5235f6287`:
 
 ```sh
 cargo fmt --all
@@ -184,7 +184,7 @@ cargo xtask acceptance --gate g2b --runtime echo-rlib
 Runner setup:
 
 ```text
-Building Docker image `warp-drive-g2b-echo-copyin-42409-1780301507970` from sanitized copies (no bind mounts)...
+Building Docker image `warp-drive-g2b-echo-copyin-80862-1780306575968` from sanitized copies (no bind mounts)...
 Running g2b echo-rlib acceptance in copy-in Docker container...
 Copy-in acceptance isolation:
   PASS no git metadata in copied repos
@@ -192,7 +192,7 @@ Building local-only warp-drive-fuse Echo binary...
 Running g2b echo-rlib acceptance script...
 === WARP DRIVE G2b acceptance ===
 
-Mounting at /tmp/warp-g2b.Bjh0tk (echo-rlib backend, G2b gate) ...
+Mounting at /tmp/warp-g2b.30tjQp (echo-rlib backend, G2b gate) ...
 Mounted (fuse pid 2786).
 ```
 
@@ -239,6 +239,8 @@ Acceptance assertions:
   PASS  /echo/head.json has frontier field
   PASS  /echo/head.json has state_root field
   PASS  /echo/head.json has projection_hash field
+  PASS  /echo/head.json omits artifact_hash
+  PASS  /echo/head.json omits POSIX path literal
   PASS  /echo/head.json worldline is 64-char non-zero hex
   PASS  /echo/head.json frontier is 64-char non-zero hex
   PASS  /echo/head.json state_root is 64-char non-zero hex
@@ -275,14 +277,14 @@ Acceptance assertions:
   PASS  write to /echo/head.json correctly rejected (EROFS)
   PASS  create newfile.txt correctly rejected (EROFS)
 
-G2b GATE PASSED  (58 / 58 assertions)
+G2b GATE PASSED  (60 / 60 assertions)
 ```
 
 Cleanup:
 
 ```text
-Untagged: warp-drive-g2b-echo-copyin-42409-1780301507970:latest
-Deleted: sha256:b3e4b947202c17d0b0e28b4f3c6526bd85a2bcd315b96430235d34c8cb14bdd0
+Untagged: warp-drive-g2b-echo-copyin-80862-1780306575968:latest
+Deleted: sha256:071f93127b1e5b7cfc2b9e35fd945a48b4d2f83e972463fe7f3d77737acf2528
 ```
 
 ## Caveats
