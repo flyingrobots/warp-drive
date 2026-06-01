@@ -17,7 +17,7 @@ G2a passed: real Echo coordinate metadata appears at the FUSE mount point via
 the `warp-wasm` native rlib. Normal file bytes remain G1 fixture bytes until
 G2b proves an Echo-backed projection.
 
-Active branch: `gate/g2`.
+Active branch: `gate/g2b`.
 
 ## What just shipped?
 

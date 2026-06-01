@@ -16,8 +16,10 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand};
 
@@ -71,6 +73,10 @@ enum Task {
         #[arg(long, default_value = "warp-drive-g1")]
         tag: String,
 
+        /// Gate to test.
+        #[arg(long, value_enum)]
+        gate: Option<Gate>,
+
         /// Runtime back-end to test.
         #[arg(long, value_enum, default_value = "in-memory")]
         runtime: Runtime,
@@ -83,9 +89,33 @@ enum Runtime {
     /// Hardcoded in-memory fixture tree. G1 gate target.
     #[value(name = "in-memory")]
     InMemory,
-    /// Embedded Echo rlib coordinate metadata over G1 fixture bytes. G2a target.
+    /// Embedded Echo rlib backend for local Echo gates.
     #[value(name = "echo-rlib")]
     EchoRlib,
+}
+
+/// Acceptance gates known to developer tasks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum Gate {
+    /// POSIX translation over the in-memory fixture tree.
+    #[value(name = "g1")]
+    G1,
+    /// Echo coordinate metadata mount.
+    #[value(name = "g2a")]
+    G2a,
+    /// First Echo-projected regular-file bytes.
+    #[value(name = "g2b")]
+    G2b,
+}
+
+impl Gate {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::G1 => "g1",
+            Self::G2a => "g2a",
+            Self::G2b => "g2b",
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -94,7 +124,7 @@ fn main() -> ExitCode {
         Task::InstallDeps => install_deps(),
         Task::Mount { path, runtime } => mount(&path, runtime),
         Task::Unmount { path } => unmount(&path),
-        Task::Acceptance { tag, runtime } => acceptance(&tag, runtime),
+        Task::Acceptance { tag, gate, runtime } => acceptance(&tag, runtime, gate),
     };
 
     match result {
@@ -191,10 +221,16 @@ fn unmount_impl(_path: &Path) -> Result<(), String> {
 
 // ── acceptance ───────────────────────────────────────────────────────────────
 
-fn acceptance(tag: &str, runtime: Runtime) -> Result<(), String> {
+fn acceptance(tag: &str, runtime: Runtime, gate: Option<Gate>) -> Result<(), String> {
     match runtime {
-        Runtime::InMemory => acceptance_in_memory(tag),
-        Runtime::EchoRlib => acceptance_echo_rlib(),
+        Runtime::InMemory => match gate.unwrap_or(Gate::G1) {
+            Gate::G1 => acceptance_in_memory(tag),
+            unsupported => Err(format!(
+                "runtime in-memory does not support gate {}; use --runtime echo-rlib",
+                unsupported.as_str()
+            )),
+        },
+        Runtime::EchoRlib => acceptance_echo_rlib(gate.unwrap_or(Gate::G2a)),
     }
 }
 
@@ -218,7 +254,22 @@ fn acceptance_in_memory(tag: &str) -> Result<(), String> {
     )
 }
 
-fn acceptance_echo_rlib() -> Result<(), String> {
+fn acceptance_echo_rlib(gate: Gate) -> Result<(), String> {
+    let script = match gate {
+        Gate::G1 => {
+            return Err(
+                "runtime echo-rlib does not support gate g1; use --runtime in-memory".to_owned(),
+            );
+        }
+        Gate::G2a => "scripts/acceptance-g2.sh",
+        Gate::G2b => "scripts/acceptance-g2b.sh",
+    };
+
+    if env::var_os("WARP_DRIVE_ACCEPTANCE_IN_CONTAINER").is_none() {
+        return acceptance_echo_rlib_copyin_docker(gate);
+    }
+    assert_sanitized_container_checkout()?;
+
     println!("Building local-only warp-drive-fuse Echo binary...");
     run(
         "cargo",
@@ -230,14 +281,222 @@ fn acceptance_echo_rlib() -> Result<(), String> {
             "target/echo-rlib",
         ],
     )?;
-    println!("Running G2a echo-rlib acceptance script...");
+    println!("Running {} echo-rlib acceptance script...", gate.as_str());
     let target_debug = env::current_dir()
         .map_err(|e| format!("failed to read current directory: {e}"))?
         .join("target")
         .join("echo-rlib")
         .join("debug");
     let path = prepend_path(target_debug)?;
-    run_with_path("scripts/acceptance-g2.sh", &[], &path)
+    run_with_path(script, &[], &path)
+}
+
+fn assert_sanitized_container_checkout() -> Result<(), String> {
+    let warp_root =
+        env::current_dir().map_err(|e| format!("failed to read current directory: {e}"))?;
+    let repo_parent = warp_root
+        .parent()
+        .ok_or_else(|| format!("repo path `{}` has no parent", warp_root.display()))?;
+    let echo_root = repo_parent.join("echo-warp-drive");
+
+    println!("Copy-in acceptance isolation:");
+    let forbidden = [
+        warp_root.join(".git"),
+        warp_root.join(".gitmodules"),
+        echo_root.join(".git"),
+        echo_root.join(".gitmodules"),
+    ];
+    for path in forbidden {
+        if path.exists() {
+            return Err(format!(
+                "unsafe acceptance checkout: `{}` exists; Echo acceptance must run from sanitized copy-in Docker source, not a live Git checkout",
+                path.display()
+            ));
+        }
+    }
+    if env::var_os("GIT_DIR").is_some() || env::var_os("GIT_WORK_TREE").is_some() {
+        return Err("unsafe acceptance environment: GIT_DIR/GIT_WORK_TREE is set".to_owned());
+    }
+    println!("  PASS no git metadata in copied repos");
+    Ok(())
+}
+
+fn acceptance_echo_rlib_copyin_docker(gate: Gate) -> Result<(), String> {
+    let repo_root = env::current_dir().map_err(|e| format!("failed to read current dir: {e}"))?;
+    let repo_parent = repo_root
+        .parent()
+        .ok_or_else(|| format!("repo path `{}` has no parent", repo_root.display()))?;
+    let echo_root = repo_parent.join("echo-warp-drive");
+    if !echo_root.join("crates").join("warp-wasm").exists() {
+        return Err(format!(
+            "expected sibling Echo checkout at `{}`",
+            echo_root.display()
+        ));
+    }
+
+    let stage = copyin_stage_dir(gate)?;
+    let image_tag = copyin_image_tag(gate)?;
+    let result = (|| {
+        let warp_copy = stage.join("warp-drive");
+        let echo_copy = stage.join("echo-warp-drive");
+        copy_repo_for_docker(&repo_root, &warp_copy)?;
+        copy_repo_for_docker(&echo_root, &echo_copy)?;
+        write_copyin_dockerfile(&stage)?;
+
+        println!("Building Docker image `{image_tag}` from sanitized copies (no bind mounts)...");
+        let dockerfile = stage.join("Dockerfile.echo-acceptance");
+        let dockerfile_arg = path_str(&dockerfile)?;
+        let stage_arg = path_str(&stage)?;
+        run(
+            "docker",
+            &[
+                "build",
+                "--no-cache",
+                "-t",
+                &image_tag,
+                "-f",
+                dockerfile_arg,
+                stage_arg,
+            ],
+        )?;
+
+        println!(
+            "Running {} echo-rlib acceptance in copy-in Docker container...",
+            gate.as_str()
+        );
+        run(
+            "docker",
+            &[
+                "run",
+                "--rm",
+                "--device",
+                "/dev/fuse",
+                "--cap-add",
+                "SYS_ADMIN",
+                "--security-opt",
+                "apparmor=unconfined",
+                &image_tag,
+                "/usr/local/cargo/bin/cargo",
+                "xtask",
+                "acceptance",
+                "--gate",
+                gate.as_str(),
+                "--runtime",
+                "echo-rlib",
+            ],
+        )
+    })();
+
+    let stage_cleanup = fs::remove_dir_all(&stage).map_err(|e| {
+        format!(
+            "failed to remove copy-in staging dir `{}`: {e}",
+            stage.display()
+        )
+    });
+    let _ = run("docker", &["rmi", "-f", &image_tag]);
+
+    match (result, stage_cleanup) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(err), Ok(())) => Err(err),
+        (Ok(()), Err(cleanup_err)) => Err(cleanup_err),
+        (Err(err), Err(cleanup_err)) => Err(format!("{err}; additionally, {cleanup_err}")),
+    }
+}
+
+fn copyin_stage_dir(gate: Gate) -> Result<PathBuf, String> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("system clock error: {e}"))?
+        .as_millis();
+    let stage = env::temp_dir().join(format!(
+        "warp-drive-{}-copyin-{}-{now}",
+        gate.as_str(),
+        std::process::id()
+    ));
+    fs::create_dir_all(&stage).map_err(|e| {
+        format!(
+            "failed to create copy-in staging dir `{}`: {e}",
+            stage.display()
+        )
+    })?;
+    Ok(stage)
+}
+
+fn copyin_image_tag(gate: Gate) -> Result<String, String> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("system clock error: {e}"))?
+        .as_millis();
+    Ok(format!(
+        "warp-drive-{}-echo-copyin-{}-{now}",
+        gate.as_str(),
+        std::process::id()
+    ))
+}
+
+fn copy_repo_for_docker(source: &Path, destination: &Path) -> Result<(), String> {
+    fs::create_dir_all(destination).map_err(|e| {
+        format!(
+            "failed to create sanitized repo copy `{}`: {e}",
+            destination.display()
+        )
+    })?;
+    let source_arg = format!("{}/", path_str(source)?);
+    let destination_arg = path_str(destination)?;
+    let status = Command::new("rsync")
+        .arg("-a")
+        .arg("--delete")
+        .arg("--exclude")
+        .arg(".git")
+        .arg("--exclude")
+        .arg("target")
+        .arg("--exclude")
+        .arg(".DS_Store")
+        .arg(&source_arg)
+        .arg(destination_arg)
+        .status()
+        .map_err(|e| format!("failed to spawn `rsync`: {e}"))?;
+
+    if status.success() {
+        return Ok(());
+    }
+
+    let code = status.code().unwrap_or(-1);
+    Err(format!("`rsync` exited with status {code}"))
+}
+
+fn write_copyin_dockerfile(stage: &Path) -> Result<(), String> {
+    let dockerfile = r#"FROM rust:1.90
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH="/usr/local/cargo/bin:${PATH}"
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        fuse3 \
+        libssl-dev \
+        pkg-config \
+        ripgrep \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /work
+COPY warp-drive /work/warp-drive
+COPY echo-warp-drive /work/echo-warp-drive
+# Acceptance runs against copied source trees only. Strip VCS metadata so the
+# container has no remote to fetch from, push to, or mutate.
+RUN rm -rf \
+        /work/warp-drive/.git \
+        /work/warp-drive/.gitmodules \
+        /work/echo-warp-drive/.git \
+        /work/echo-warp-drive/.gitmodules \
+    && test ! -d /work/warp-drive/.git \
+    && test ! -e /work/warp-drive/.gitmodules \
+    && test ! -d /work/echo-warp-drive/.git \
+    && test ! -e /work/echo-warp-drive/.gitmodules
+WORKDIR /work/warp-drive
+ENV WARP_DRIVE_ACCEPTANCE_IN_CONTAINER=1
+"#;
+    let path = stage.join("Dockerfile.echo-acceptance");
+    fs::write(&path, dockerfile)
+        .map_err(|e| format!("failed to write Dockerfile `{}`: {e}", path.display()))
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

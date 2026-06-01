@@ -8,7 +8,7 @@ edition      = "2024"
 rust-version = "1.90.0"
 license      = "Apache-2.0"
 repository   = "https://github.com/flyingrobots/warp-drive"
-description  = "Local-only Echo rlib metadata backend for WARP DRIVE G2a"
+description  = "Local-only Echo rlib projection backend for WARP DRIVE G2 gates"
 publish      = false
 
 [dependencies]
