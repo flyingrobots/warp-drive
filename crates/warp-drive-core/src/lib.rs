@@ -48,7 +48,27 @@ pub enum NodeContent {
     Link(Vec<u8>),
 }
 
+impl fmt::Debug for NodeContent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        const DEBUG_PREVIEW_BYTES: usize = 64;
+
+        match self {
+            Self::Bytes(bytes) => {
+                let preview_len = bytes.len().min(DEBUG_PREVIEW_BYTES);
+                f.debug_struct("Bytes")
+                    .field("len", &bytes.len())
+                    .field("preview", &&bytes[..preview_len])
+                    .field("truncated", &(preview_len < bytes.len()))
+                    .finish()
+            }
+            Self::Children(children) => f.debug_tuple("Children").field(children).finish(),
+            Self::Link(target) => f.debug_tuple("Link").field(target).finish(),
+        }
+    }
+}
+
 /// A single node in the virtual filesystem.
+#[derive(Debug)]
 pub struct VirtualNode {
     /// Stable inode number.
     pub ino: Ino,

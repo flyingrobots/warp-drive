@@ -86,11 +86,8 @@ fn node_attr(node: &VirtualNode) -> FileAttr {
 /// Returning `idx + 1` produces a dense 1-based offset sequence. The kernel
 /// passes `next_offset` of the last consumed entry as `offset` in the following
 /// `readdir` call, giving us a stable pagination cursor.
-#[allow(clippy::cast_possible_truncation)]
-const fn next_offset(idx: usize) -> u64 {
-    // idx is bounded by the fixture size (15 entries max including . and ..);
-    // truncation is impossible on any platform where usize is at least 4 bits.
-    (idx + 1) as u64
+fn next_offset(idx: usize) -> u64 {
+    u64::try_from(idx.saturating_add(1)).unwrap_or(u64::MAX)
 }
 
 impl fuser::Filesystem for FuseAdapter {
