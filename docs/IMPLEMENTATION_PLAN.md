@@ -412,7 +412,7 @@ docs and schemas are self-contained.
 ### 3.5 Milestones
 
 - **W1.M1**: `warpdrive.graphql` written and successfully generates Rust
-  + TS via existing Wesley pipeline
+  and TS via existing Wesley pipeline
 - **W1.M2**: Frontier-advance subscription protocol specified
 - **W1.M3**: `continuum-v1.md` spec document complete
 
@@ -873,16 +873,19 @@ Combining the workstream milestones into shipping moments:
 Goal: answer the load-bearing unknowns before any protocol ceremony begins.
 
 **G-1 repo hygiene (hours, not days):**
+
 - LICENSE matches all SPDX headers
 - Crate and repo naming locked
 - README states experimental status
 
 **G0 — embedding spike:** ✅ DONE
+
 - `warp-wasm` embeds as a native Rust rlib — no wasm runtime needed
 - `init_embedded()` + `observe_cbor()` round-trip from outside the echo workspace
 - See `docs/gates/G0.md` for the full finding
 
 **G1 — in-memory FUSE fake tree:**
+
 - Cargo workspace scaffolded with empty crates
 - In-memory driver exposes hardcoded fixture tree (see §11.6)
 - `ls`, `cat`, `find`, `rg` all work against it
