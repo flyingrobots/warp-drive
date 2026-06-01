@@ -18,6 +18,10 @@ RUN apt-get update && \
 
 COPY . .
 
+RUN rm -rf .git .gitmodules && \
+    test ! -d .git && \
+    test ! -e .gitmodules
+
 RUN cargo build --package warp-drive-fuse && \
     cp target/debug/warp-drive-fuse /usr/local/bin/warp-drive-fuse
 

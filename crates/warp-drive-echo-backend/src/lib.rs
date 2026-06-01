@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // © James Ross Ω FLYING•ROBOTS <https://github.com/flyingrobots>
 
-//! Echo rlib-backed metadata adapter for the G2a gate.
+//! Echo rlib-backed projection adapter for G2 gates.
 //!
 //! G2a deliberately does not claim Echo-projected file bytes. It initializes a
 //! real embedded Echo kernel, performs one `observe_cbor()` head observation on
 //! the main thread, and bakes that coordinate metadata into the `.warp/` files
 //! of the existing fixture tree.
+//!
+//! G2b adds one normal projected file, `/echo/head.json`, whose bytes come from
+//! an Echo `QueryView` observation returning `ObservationPayload::QueryBytes`.
 
 use std::error::Error;
 use std::fmt;
@@ -23,7 +26,7 @@ pub struct EchoBackend {
 }
 
 impl EchoBackend {
-    /// Initialize Echo, observe its current head, and build a cached tree.
+    /// Initialize Echo, observe its current head, and build a cached G2a tree.
     ///
     /// # Errors
     ///
@@ -35,9 +38,33 @@ impl EchoBackend {
         let artifact = observe_head(handle.worldline_id)?;
         let metadata = EchoCoordinateMetadata::from_artifact(&artifact)?;
         let tree = FixtureTree::with_warp_metadata(
-            metadata.coordinate_json().into_bytes(),
-            metadata.runtime_json().into_bytes(),
-            metadata.stats_json().into_bytes(),
+            metadata.coordinate_json("G2a").into_bytes(),
+            metadata.runtime_json("G2a").into_bytes(),
+            metadata.stats_json("G2a").into_bytes(),
+        )
+        .map_err(|err| EchoBackendError::FixtureTree(err.to_string()))?;
+
+        Ok(Self { tree })
+    }
+
+    /// Initialize Echo, observe coordinate metadata, project `/echo/head.json`,
+    /// and build a cached G2b tree.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EchoBackendError`] if Echo initialization, request encoding,
+    /// kernel observation, projection decoding, or fixture construction fails.
+    pub fn init_g2b() -> Result<Self, EchoBackendError> {
+        let handle = warp_wasm::init_embedded()
+            .map_err(|err| EchoBackendError::Init(format!("{}: {}", err.code, err.message)))?;
+        let artifact = observe_head(handle.worldline_id)?;
+        let metadata = EchoCoordinateMetadata::from_artifact(&artifact)?;
+        let echo_head_json = observe_echo_head_file(handle.worldline_id, &metadata)?;
+        let tree = FixtureTree::with_warp_metadata_and_echo_head_file(
+            metadata.coordinate_json("G2b").into_bytes(),
+            metadata.runtime_json("G2b").into_bytes(),
+            metadata.stats_json("G2b").into_bytes(),
+            echo_head_json,
         )
         .map_err(|err| EchoBackendError::FixtureTree(err.to_string()))?;
 
@@ -64,8 +91,8 @@ pub enum EchoBackendError {
     Kernel(String),
     /// Decoding the Echo response failed.
     DecodeResponse(String),
-    /// Echo returned a non-head payload for a head request.
-    UnexpectedPayload,
+    /// Echo returned the wrong payload kind for the request.
+    UnexpectedPayload { expected: &'static str },
     /// Echo returned an artifact whose head and resolved coordinate disagree.
     InconsistentArtifact {
         field: &'static str,
@@ -90,7 +117,9 @@ impl fmt::Display for EchoBackendError {
             Self::DecodeResponse(message) => {
                 write!(f, "Echo observation response decoding failed: {message}")
             }
-            Self::UnexpectedPayload => f.write_str("Echo observation returned a non-head payload"),
+            Self::UnexpectedPayload { expected } => {
+                write!(f, "Echo observation returned a non-{expected} payload")
+            }
             Self::InconsistentArtifact {
                 field,
                 head,
@@ -119,7 +148,7 @@ struct EchoCoordinateMetadata {
 impl EchoCoordinateMetadata {
     fn from_artifact(artifact: &ObservationArtifact) -> Result<Self, EchoBackendError> {
         let ObservationPayload::Head { head } = &artifact.payload else {
-            return Err(EchoBackendError::UnexpectedPayload);
+            return Err(EchoBackendError::UnexpectedPayload { expected: "head" });
         };
 
         let frontier = hex(&head.commit_id);
@@ -147,23 +176,25 @@ impl EchoCoordinateMetadata {
         })
     }
 
-    fn coordinate_json(&self) -> String {
+    fn coordinate_json(&self, gate: &str) -> String {
         format!(
-            "{{\"worldline\":\"{}\",\"frontier\":\"{}\",\"state_root\":\"{}\",\"tick\":{},\"artifact_hash\":\"{}\",\"backend\":\"echo-rlib\",\"gate\":\"G2a\"}}\n",
-            self.worldline, self.frontier, self.state_root, self.tick, self.artifact_hash
+            "{{\"worldline\":\"{}\",\"frontier\":\"{}\",\"state_root\":\"{}\",\"tick\":{},\"artifact_hash\":\"{}\",\"backend\":\"echo-rlib\",\"gate\":\"{}\"}}\n",
+            self.worldline, self.frontier, self.state_root, self.tick, self.artifact_hash, gate
         )
     }
 
-    fn runtime_json(&self) -> String {
+    fn runtime_json(&self, gate: &str) -> String {
         format!(
-            "{{\"kind\":\"echo-rlib\",\"driver\":\"warp-wasm\",\"gate\":\"G2a\",\"worldline\":\"{}\"}}\n",
-            self.worldline
+            "{{\"kind\":\"echo-rlib\",\"driver\":\"warp-wasm\",\"gate\":\"{}\",\"worldline\":\"{}\"}}\n",
+            gate, self.worldline
         )
     }
 
-    fn stats_json(&self) -> String {
-        "{\"gate\":\"G2a\",\"status\":\"static-placeholder\",\"note\":\"live counters arrive at G3\",\"lookup_count\":0,\"getattr_count\":0,\"readdir_count\":0,\"open_count\":0,\"read_count\":0,\"readlink_count\":0}\n"
-            .to_owned()
+    fn stats_json(&self, gate: &str) -> String {
+        format!(
+            "{{\"gate\":\"{}\",\"status\":\"static-placeholder\",\"note\":\"live counters arrive at G3\",\"lookup_count\":0,\"getattr_count\":0,\"readdir_count\":0,\"open_count\":0,\"read_count\":0,\"readlink_count\":0}}\n",
+            gate
+        )
     }
 }
 
@@ -194,6 +225,69 @@ fn observe_head(worldline_id: WorldlineId) -> Result<ObservationArtifact, EchoBa
     )
     .map_err(|err| EchoBackendError::BuildRequest(format!("{err:?}")))?;
 
+    let request_bytes = echo_wasm_abi::encode_cbor(&request)
+        .map_err(|err| EchoBackendError::EncodeRequest(format!("{err:?}")))?;
+    let response_bytes = warp_wasm::observe_cbor(&request_bytes);
+
+    match echo_wasm_abi::decode_cbor::<OkEnvelope<ObservationArtifact>>(&response_bytes) {
+        Ok(envelope) => Ok(envelope.data),
+        Err(decode_error) => {
+            if let Ok(error) = echo_wasm_abi::decode_cbor::<ErrEnvelope>(&response_bytes) {
+                return Err(EchoBackendError::Kernel(format!(
+                    "{}: {}",
+                    error.code, error.message
+                )));
+            }
+            Err(EchoBackendError::DecodeResponse(format!(
+                "{decode_error:?}"
+            )))
+        }
+    }
+}
+
+fn observe_echo_head_file(
+    worldline_id: WorldlineId,
+    metadata: &EchoCoordinateMetadata,
+) -> Result<Vec<u8>, EchoBackendError> {
+    let request = ObservationRequest::builtin_one_shot(
+        ObservationCoordinate {
+            worldline_id,
+            at: ObservationAt::Frontier,
+        },
+        ObservationFrame::QueryView,
+        ObservationProjection::Query {
+            query_id: warp_wasm::experimental_warp_drive_g2b::HEAD_QUERY_ID,
+            vars_bytes: warp_wasm::experimental_warp_drive_g2b::HEAD_QUERY_VARS.to_vec(),
+        },
+    )
+    .map_err(|err| EchoBackendError::BuildRequest(format!("{err:?}")))?;
+
+    let artifact = observe(request)?;
+    ensure_artifact_field(
+        "query_worldline",
+        &hex(artifact.resolved.worldline_id.as_bytes()),
+        &metadata.worldline,
+    )?;
+    ensure_artifact_field(
+        "query_frontier",
+        &hex(&artifact.resolved.commit_hash),
+        &metadata.frontier,
+    )?;
+    ensure_artifact_field(
+        "query_state_root",
+        &hex(&artifact.resolved.state_root),
+        &metadata.state_root,
+    )?;
+
+    let ObservationPayload::QueryBytes { data } = artifact.payload else {
+        return Err(EchoBackendError::UnexpectedPayload {
+            expected: "query bytes",
+        });
+    };
+    Ok(data)
+}
+
+fn observe(request: ObservationRequest) -> Result<ObservationArtifact, EchoBackendError> {
     let request_bytes = echo_wasm_abi::encode_cbor(&request)
         .map_err(|err| EchoBackendError::EncodeRequest(format!("{err:?}")))?;
     let response_bytes = warp_wasm::observe_cbor(&request_bytes);

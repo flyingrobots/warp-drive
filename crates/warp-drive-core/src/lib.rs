@@ -94,6 +94,13 @@ impl VirtualNode {
 /// 12 = /.warp/runtime
 /// 13 = /.warp/stats
 /// ```
+///
+/// G2b projected-file extension:
+///
+/// ```text
+/// 14 = /echo/
+/// 15 = /echo/head.json
+/// ```
 pub struct FixtureTree {
     nodes: HashMap<Ino, VirtualNode>,
 }
@@ -105,6 +112,19 @@ pub enum FixtureTreeError {
     MissingMetadataInode(Ino),
     /// A required metadata inode exists but is not a regular file.
     MetadataInodeNotFile(Ino),
+    /// A required directory inode is missing from the hardcoded fixture.
+    MissingDirectoryInode(Ino),
+    /// A required directory inode exists but is not a directory.
+    DirectoryInodeNotDirectory(Ino),
+    /// A projected fixture extension tried to reuse an existing inode.
+    DuplicateFixtureInode(Ino),
+    /// A projected fixture extension tried to reuse an existing child name.
+    DuplicateDirectoryEntry {
+        /// Parent directory that already contains the child name.
+        parent: Ino,
+        /// Duplicate child name.
+        name: &'static str,
+    },
 }
 
 impl fmt::Display for FixtureTreeError {
@@ -115,6 +135,22 @@ impl fmt::Display for FixtureTreeError {
             }
             Self::MetadataInodeNotFile(ino) => {
                 write!(f, "fixture metadata inode {} is not a regular file", ino.0)
+            }
+            Self::MissingDirectoryInode(ino) => {
+                write!(f, "fixture directory inode {} is missing", ino.0)
+            }
+            Self::DirectoryInodeNotDirectory(ino) => {
+                write!(f, "fixture directory inode {} is not a directory", ino.0)
+            }
+            Self::DuplicateFixtureInode(ino) => {
+                write!(f, "fixture extension inode {} already exists", ino.0)
+            }
+            Self::DuplicateDirectoryEntry { parent, name } => {
+                write!(
+                    f,
+                    "fixture directory inode {} already has child entry {name}",
+                    parent.0
+                )
             }
         }
     }
@@ -356,6 +392,28 @@ impl FixtureTree {
         Ok(tree)
     }
 
+    /// Construct the G1 fixture tree with dynamic `.warp/` metadata and one
+    /// Echo-projected regular file at `/echo/head.json`.
+    ///
+    /// This is the G2b bridge: most POSIX-visible files remain fixture-backed,
+    /// but `/echo/head.json` is supplied by the Echo projection path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FixtureTreeError`] if required fixture inodes are missing,
+    /// have the wrong kind, or the projected file extension would collide with
+    /// an existing inode/name.
+    pub fn with_warp_metadata_and_echo_head_file(
+        coordinate: Vec<u8>,
+        runtime: Vec<u8>,
+        stats: Vec<u8>,
+        echo_head_json: Vec<u8>,
+    ) -> Result<Self, FixtureTreeError> {
+        let mut tree = Self::with_warp_metadata(coordinate, runtime, stats)?;
+        tree.insert_echo_head_file(echo_head_json)?;
+        Ok(tree)
+    }
+
     /// Look up a child of `parent` by raw name bytes.
     ///
     /// Returns `None` if `parent` does not exist, is not a directory, or has
@@ -403,6 +461,56 @@ impl FixtureTree {
             return Err(FixtureTreeError::MetadataInodeNotFile(ino));
         }
         node.content = NodeContent::Bytes(bytes);
+        Ok(())
+    }
+
+    fn insert_echo_head_file(&mut self, bytes: Vec<u8>) -> Result<(), FixtureTreeError> {
+        const ECHO_DIR_INO: Ino = Ino(14);
+        const ECHO_HEAD_INO: Ino = Ino(15);
+
+        if self.nodes.contains_key(&ECHO_DIR_INO) {
+            return Err(FixtureTreeError::DuplicateFixtureInode(ECHO_DIR_INO));
+        }
+        if self.nodes.contains_key(&ECHO_HEAD_INO) {
+            return Err(FixtureTreeError::DuplicateFixtureInode(ECHO_HEAD_INO));
+        }
+
+        let Some(root) = self.nodes.get_mut(&ROOT_INO) else {
+            return Err(FixtureTreeError::MissingDirectoryInode(ROOT_INO));
+        };
+        let NodeContent::Children(root_children) = &mut root.content else {
+            return Err(FixtureTreeError::DirectoryInodeNotDirectory(ROOT_INO));
+        };
+        if root_children
+            .iter()
+            .any(|(_, name)| name.as_slice() == b"echo")
+        {
+            return Err(FixtureTreeError::DuplicateDirectoryEntry {
+                parent: ROOT_INO,
+                name: "echo",
+            });
+        }
+        root_children.push((ECHO_DIR_INO, b"echo".to_vec()));
+
+        self.nodes.insert(
+            ECHO_DIR_INO,
+            VirtualNode {
+                ino: ECHO_DIR_INO,
+                parent_ino: ROOT_INO,
+                kind: NodeKind::Directory,
+                content: NodeContent::Children(vec![(ECHO_HEAD_INO, b"head.json".to_vec())]),
+            },
+        );
+        self.nodes.insert(
+            ECHO_HEAD_INO,
+            VirtualNode {
+                ino: ECHO_HEAD_INO,
+                parent_ino: ECHO_DIR_INO,
+                kind: NodeKind::RegularFile,
+                content: NodeContent::Bytes(bytes),
+            },
+        );
+
         Ok(())
     }
 }

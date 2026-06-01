@@ -1200,8 +1200,10 @@ For grounding, the relevant prior art in the three repos as of
 - ❌ Frontier-advance subscription (no general API)
 - ❌ Lane enumeration (lanes are implicit today)
 - ❌ Filesystem contract handlers (none exist)
-- ❌ Embeddable entry point (warp-wasm is wasm-target-only;
-  loadable but not packaged)
+- ✅ Embeddable entry point: G0 proved native Rust rlib embedding. The G2+
+  local Echo path links `warp-wasm` as a Rust library and calls
+  `warp_wasm::init_embedded()` plus `observe_cbor()`. The wasm32 artifact
+  remains for browser/wasm-host use and is not the native embedding target.
 
 ### 10.2 wesley/ (the meta-compiler)
 
