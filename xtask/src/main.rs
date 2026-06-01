@@ -341,6 +341,8 @@ fn acceptance_echo_rlib_copyin_docker(gate: Gate) -> Result<(), String> {
         let echo_copy = stage.join("echo-warp-drive");
         copy_repo_for_docker(&repo_root, &warp_copy)?;
         copy_repo_for_docker(&echo_root, &echo_copy)?;
+        assert_sanitized_repo_copy(&warp_copy)?;
+        assert_sanitized_repo_copy(&echo_copy)?;
         write_copyin_dockerfile(&stage)?;
 
         println!("Building Docker image `{image_tag}` from sanitized copies (no bind mounts)...");
@@ -449,6 +451,8 @@ fn copy_repo_for_docker(source: &Path, destination: &Path) -> Result<(), String>
         .arg("--exclude")
         .arg(".git")
         .arg("--exclude")
+        .arg(".gitmodules")
+        .arg("--exclude")
         .arg("target")
         .arg("--exclude")
         .arg(".DS_Store")
@@ -463,6 +467,18 @@ fn copy_repo_for_docker(source: &Path, destination: &Path) -> Result<(), String>
 
     let code = status.code().unwrap_or(-1);
     Err(format!("`rsync` exited with status {code}"))
+}
+
+fn assert_sanitized_repo_copy(repo: &Path) -> Result<(), String> {
+    for forbidden in [repo.join(".git"), repo.join(".gitmodules")] {
+        if forbidden.exists() {
+            return Err(format!(
+                "unsafe copy-in staging tree: `{}` exists before Docker build context creation",
+                forbidden.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn write_copyin_dockerfile(stage: &Path) -> Result<(), String> {

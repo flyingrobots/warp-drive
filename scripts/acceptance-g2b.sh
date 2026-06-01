@@ -211,6 +211,8 @@ assert_contains "$ECHO_HEAD" '"worldline"' "/echo/head.json has worldline field"
 assert_contains "$ECHO_HEAD" '"frontier"' "/echo/head.json has frontier field"
 assert_contains "$ECHO_HEAD" '"state_root"' "/echo/head.json has state_root field"
 assert_contains "$ECHO_HEAD" '"projection_hash"' "/echo/head.json has projection_hash field"
+assert_not_contains "$ECHO_HEAD" '"artifact_hash"' "/echo/head.json omits artifact_hash"
+assert_not_contains "$ECHO_HEAD" '/echo/head.json' "/echo/head.json omits POSIX path literal"
 
 ECHO_WORLDLINE_VALUE=$(json_hex_value "$ECHO_HEAD" "worldline" || true)
 ECHO_FRONTIER_VALUE=$(json_hex_value "$ECHO_HEAD" "frontier" || true)

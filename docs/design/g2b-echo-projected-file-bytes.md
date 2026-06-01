@@ -3,9 +3,11 @@
 
 # G2b - Echo-projected regular-file bytes
 
-Status: DRAFT
+Status: ACCEPTED
 
 Branch: `gate/g2b`
+
+Proof record: [`docs/gates/G2b.md`](../gates/G2b.md)
 
 ## Purpose
 
@@ -234,11 +236,12 @@ G2b does not implement:
 7. `.warp/` diagnostic expansion beyond what the proof needs.
 8. The stale-save demo.
 
-## Remaining question before gate record
+## Proof model
 
-Should CI check out `echo-warp-drive` as a sibling for G2b, or should the
-Echo-backed gate remain a local Linux proof until the dependency story is
-promoted?
+G2b is recorded as a local Linux proof using the copy-in Docker runner. The
+runner requires a sibling `../echo-warp-drive` checkout on the host before it
+builds the sanitized Docker context. CI promotion remains future dependency
+work; see the gate record for the accepted transcript and caveats.
 
 ## Proof boundary
 
