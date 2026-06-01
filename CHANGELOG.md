@@ -10,9 +10,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- G2b passed and merged: `/echo/head.json` proves the first Echo-projected
+  normal regular-file bytes through
+  `ObservationProjection::Query -> ObservationPayload::QueryBytes`.
+- G2b acceptance passed 60 / 60 assertions in the copy-in Docker runner.
+- Echo PR #389 merged the temporary `warp-wasm`
+  `experimental-warp-drive-g2b` scaffold behind a non-default feature.
+- WARP DRIVE PR #2 merged the G2b FUSE integration, gate record, and sanitized
+  copy-in Docker acceptance path.
+- Copy-in Docker acceptance now stages sanitized source copies instead of
+  bind-mounting live host repositories, excludes Git metadata before Docker
+  build context creation, and refuses to run if Git metadata appears inside the
+  container.
 - G2a passed: Echo coordinate metadata is surfaced through a real FUSE mount
-  via the local Echo rlib path; normal file bytes remain the G1 fixture source
-  pending G2b.
+  via the local Echo rlib path.
+
+### Caveats
+
+- G2b proves only `/echo/head.json` as Echo-projected normal file content. G1
+  fixture files and directories remain mostly fixture-backed.
+
+### Next
+
+- G3 is the next gate: trustworthy `.warp/` diagnostics and live operation
+  counters, especially `/.warp/stats`, so future projection/write bugs are
+  observable instead of guessed.
 
 ---
 

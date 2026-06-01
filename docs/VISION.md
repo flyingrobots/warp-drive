@@ -1,6 +1,6 @@
 ---
 title: "WARP DRIVE — Executive Summary"
-generated_at: "2026-05-30"
+generated_at: "2026-06-01"
 provenance_level: artifact_history
 source_files:
   - README.md
@@ -14,6 +14,8 @@ source_files:
   - docs/gates/G0.md
   - docs/gates/G1.md
   - docs/gates/G2a.md
+  - docs/design/g2b-echo-projected-file-bytes.md
+  - docs/gates/G2b.md
 ---
 
 # WARP DRIVE — Executive Summary
@@ -32,7 +34,7 @@ that runtime's internals.
 
 ## Current state
 
-Three gates closed, three proofs in the repo:
+Four gates closed, four proofs in the repo:
 
 - **G0 (2026-05-29):** `warp-wasm` embeds as a native Rust rlib.
   `observe_cbor` round-trips from outside the echo workspace. The
@@ -49,9 +51,15 @@ Three gates closed, three proofs in the repo:
   resulting coordinate metadata through `/.warp/coordinate` and
   `/.warp/runtime`. Normal file bytes remain the G1 fixture source.
 
+- **G2b (2026-06-01):** A FUSE mount serves `/echo/head.json` as a normal
+  read-only file whose bytes come from Echo through
+  `ObservationProjection::Query -> ObservationPayload::QueryBytes`. The proof
+  is intentionally narrow: only `/echo/head.json` is Echo-projected; the G1
+  fixture tree remains mostly fixture-backed.
+
 The FUSE membrane exists in miniature. The question now shifts from
-"can a POSIX membrane exist?" to "what is the smallest Echo-projected file
-byte path?"
+"can Echo produce one normal file's bytes?" to "can the membrane explain what
+it is doing through trustworthy diagnostics and counters?"
 
 ## Signposts
 
@@ -68,6 +76,8 @@ byte path?"
 | `docs/gates/G0.md` | Hand-authored | G0 gate record |
 | `docs/gates/G1.md` | Hand-authored | G1 gate record |
 | `docs/gates/G2a.md` | Hand-authored | G2a gate record |
+| `docs/design/g2b-echo-projected-file-bytes.md` | Hand-authored | G2b design |
+| `docs/gates/G2b.md` | Hand-authored | G2b gate record |
 
 ## Legends
 
@@ -76,7 +86,7 @@ byte path?"
 Gate-level work: acceptance tests, projection adapters, FUSE semantics,
 domain design, inode strategy.
 
-- **Active:** G2b design: first Echo-projected regular-file bytes.
+- **Active:** G3 design: `.warp/` diagnostics and live perf counters.
 - **Backlog:** 4 bad-code items, 4 cool-ideas.
 
 ### INFRA
@@ -90,9 +100,9 @@ Infrastructure: CI, Docker, xtask, tooling, process.
 
 ### Active
 
-- **G2b — Echo-projected file bytes**: keep G2a metadata, then prove at least
-  one non-`.warp` regular file is served from an Echo projection instead of
-  the G1 fixture tree.
+- **G3 — `.warp/` diagnostics + perf counters**: expose trustworthy membrane
+  diagnostics and live operation counters so known POSIX operations move
+  `/.warp/stats` predictably without relying on exact FUSE syscall counts.
 
 ### Gate sequence
 
@@ -101,8 +111,8 @@ Infrastructure: CI, Docker, xtask, tooling, process.
 | G0 | rlib embedding + `observe_cbor` | ✅ passed |
 | G1 | In-memory FUSE fake tree, 29 assertions | ✅ passed |
 | G2a | Echo coordinate metadata mount, 38 assertions | ✅ passed |
-| G2b | Echo-projected regular-file bytes | ⏭️ active |
-| G3 | `.warp/` live diagnostics + perf counters | ⏳ |
+| G2b | Echo-projected regular-file bytes, 60 assertions | ✅ passed |
+| G3 | `.warp/` live diagnostics + perf counters | ⏭️ active |
 | G4+ | Write path, basis discipline, stale-save safety | ⏳ |
 
 ### Infrastructure
@@ -113,8 +123,9 @@ Infrastructure: CI, Docker, xtask, tooling, process.
 
 ## Open questions
 
-- Does the G2b projection adapter need a trait, or is a single Echo rlib
-  call sufficient at this gate?
+- Which counters are stable enough for G3 acceptance to assert as monotonic
+  before/after values without depending on exact kernel/FUSE syscall counts?
+- Which `.warp/runtime` fields are gate-critical versus diagnostic-only?
 - Should `MountGuard` use a thread or a subprocess for the FUSE process
   in integration tests?
 - At what tree size does hash-based inode assignment need collision

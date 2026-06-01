@@ -1264,9 +1264,10 @@ condition is demonstrably true.
 | Gate | Condition | Why it comes first |
 |---|---|---|
 | **G0** | ✅ Native Rust binary links warp-wasm as an rlib; `init_embedded()` initializes the engine kernel; one `observe_cbor()` round-trips from outside the echo workspace | **DONE.** rlib embedding is the correct v0.0.1 surface. The wasm32 artifact uses wasm-bindgen ABI and is not directly loadable by plain wasmtime without host shims — that is not the embedding path for v0.0.1. |
-| **G1** | In-memory FUSE mount: `ls`, `cat`, `rg` on a fake hardcoded tree | Proves POSIX translation, inode strategy, `.warp/` surface — without Echo's complexity. |
-| **G2** | Echo read-only mount: real coordinate, real `observe` | Proves membrane + Echo integration end-to-end. |
-| **G3** | `.warp/` diagnostics + perf counters readable | Without diagnostics, every bug is a haunted filesystem. |
+| **G1** | ✅ In-memory FUSE mount: `ls`, `cat`, `rg` on a fake hardcoded tree | **DONE.** Proves POSIX translation, inode strategy, `.warp/` surface — without Echo's complexity. |
+| **G2a** | ✅ Echo coordinate metadata mount: real coordinate, real `observe` | **DONE.** Proves embedded Echo can be initialized before FUSE and surface real coordinate metadata. |
+| **G2b** | ✅ First Echo-projected regular-file bytes | **DONE.** Proves one normal file, `/echo/head.json`, can be served from Echo `QueryBytes` without claiming a full filesystem projection. |
+| **G3** | `.warp/` diagnostics + perf counters readable | **ACTIVE NEXT.** Without diagnostics, every bug is a haunted filesystem. |
 | **G4** | Whole-file writes admitted via basis-tracking | Simplest write path; diff complexity deferred. |
 | **G5** | Stale-basis obstruction + receipt UX | The moral centre of the project. Must feel good. |
 | **G6** | `create`, `unlink`, `rename` working | Only after write receipts are solid. |
@@ -1276,8 +1277,9 @@ condition is demonstrably true.
 ```mermaid
 flowchart TD
     G0["✅ G0: rlib embedding<br />init_embedded + observe_cbor"]
-    G1["G1: In-memory FUSE<br />read-only fake tree"]
-    G2["G2: Echo FUSE<br />read-only real coordinate"]
+    G1["✅ G1: In-memory FUSE<br />read-only fake tree"]
+    G2a["✅ G2a: Echo coordinate<br />metadata mount"]
+    G2b["✅ G2b: Echo-projected<br />regular-file bytes"]
     G3["G3: .warp/ diagnostics<br />+ perf counters"]
     G4["G4: Whole-file writes<br />with basis tracking"]
     G5["G5: Stale-basis obstruction<br />+ receipt UX"]
@@ -1286,8 +1288,9 @@ flowchart TD
     G8["G8: Second driver<br />passes membrane tests"]
 
     G0 --> G1
-    G1 --> G2
-    G2 --> G3
+    G1 --> G2a
+    G2a --> G2b
+    G2b --> G3
     G3 --> G4
     G4 --> G5
     G5 --> G6
@@ -1311,6 +1314,17 @@ in-memory runtime with three hardcoded files proves the POSIX
 translation layer, the inode synthesizer, the cache, and the `.warp/`
 synthetic surface — without Echo's complexity. Pull the in-memory
 driver forward from G8 to G1.
+
+**G2a and G2b are done.** G2a proved Echo coordinate metadata through a
+real FUSE mount. G2b proved one normal read-only file,
+`/echo/head.json`, whose bytes come from Echo `QueryBytes`. Do not spend
+the next gate proving a second projected file. The next bottleneck is
+observability.
+
+**G3 is now active.** It should make `/.warp/stats` and `/.warp/runtime`
+trustworthy enough that known POSIX operations produce explainable
+before/after counter changes. Avoid exact syscall counts unless the
+kernel/FUSE noise is under direct control.
 
 **G5 is the product.** A stale write that fails with a well-formed
 receipt under `/.warp/intents/` is the moment the project's moral
@@ -1407,9 +1421,12 @@ Legend: 🎯 target (must work at this gate), ✅ verified, ❌ not supported by
 #### MUST
 
 - ~~**Spike G0 before anything else.**~~ **G0 is done** — see
-  `docs/gates/G0.md`. rlib embedding works. Proceed to G1.
-- **Build the in-memory driver at G1, not G8.** Deterministic tests,
-  isolation from Echo readiness, proof that the driver trait is real.
+  `docs/gates/G0.md`. rlib embedding works.
+- ~~**Build the in-memory driver at G1, not G8.**~~ **G1 is done** —
+  deterministic POSIX translation is proven.
+- **Make G3 observability boring before expanding projection breadth.**
+  G2b proved first Echo-projected bytes. The next gate should make the
+  membrane inspectable, not merely add more projected files.
 - **Define inode stability as law.** See §11.2.1.
 - **Define fsync semantics explicitly.** See §11.2.2.
 - **Make stale-basis failure beautiful.** The receipt under
@@ -1420,10 +1437,10 @@ Legend: 🎯 target (must work at this gate), ✅ verified, ❌ not supported by
 
 #### SHOULD
 
-- **Ship read-only (G2) as fast as possible.** Read-only WARP DRIVE is
-  already useful for historical inspection and coordinate browsing.
-  Writes are where complexity explodes.
-- **Put performance counters in from day one.** Count LOOKUP, GETATTR,
+- ~~**Ship read-only (G2) as fast as possible.**~~ G2a/G2b are shipped:
+  real Echo metadata plus one Echo-projected regular file. Writes are
+  where complexity explodes.
+- **Put performance counters in now.** Count LOOKUP, GETATTR,
   READDIR, cache hits/misses, runtime calls, average observe latency.
   Otherwise perf debugging becomes séance-driven engineering.
 - **Keep Continuum minimal until the second driver hurts.** A protocol
@@ -1485,6 +1502,26 @@ The full diagnostic surface targeted for G3+:
 `/.warp/stats` is the observable heartbeat. If WARP DRIVE feels slow
 and you cannot explain why, `watch cat /.warp/stats` should give an
 answer within 30 seconds.
+
+G3's minimum stats surface should start with monotonic counters that are
+useful without pretending FUSE syscall counts are perfectly deterministic:
+
+```text
+lookup_count
+getattr_count
+readdir_count
+open_count
+read_count
+readlink_count
+cache_hit_count
+cache_miss_count
+runtime_observe_count
+runtime_observe_error_count
+```
+
+Acceptance should compare before/after snapshots and require expected
+counters to move in the correct direction. It should not require exact
+counts unless the runner proves kernel/FUSE noise is controlled.
 
 ### 11.6 Golden fake-tree fixture
 
