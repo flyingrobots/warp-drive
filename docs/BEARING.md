@@ -19,8 +19,8 @@ G2b passed and merged: WARP DRIVE now proves one normal POSIX-readable file,
 the first Echo-projected regular-file proof, not a full Echo filesystem
 projection.
 
-Active branch: `ship-sync/post-g2b` for post-merge documentation sync. The next
-feature branch should start from fresh `main` as `gate/g3`.
+Next feature branch: `gate/g3`, from fresh `main` after this documentation sync
+lands.
 
 ## What just shipped?
 
@@ -46,7 +46,7 @@ feature branch should start from fresh `main` as `gate/g3`.
 - CI is not yet branch-protected. The `acceptance` job needs two clean
   runs on `ubuntu-latest` before we gate merges on it.
 - macOS local mount is blocked on macFUSE kext approval under macOS 26.3.
-  Not blocking G2; Linux Docker is the authoritative gate runner.
+  Not blocking the current gate; Linux Docker is the authoritative gate runner.
 - Fixtures crate (`warp-drive-fixtures`) and integration test harness
   (`warp-drive-test-harness`) do not exist yet. Unit tests: zero.
 - G3 has not yet made the membrane observable. `/.warp/stats` is still a static

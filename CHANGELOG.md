@@ -24,17 +24,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   container.
 - G2a passed: Echo coordinate metadata is surfaced through a real FUSE mount
   via the local Echo rlib path.
-
-### Caveats
-
-- G2b proves only `/echo/head.json` as Echo-projected normal file content. G1
-  fixture files and directories remain mostly fixture-backed.
-
-### Next
-
 - G3 is the next gate: trustworthy `.warp/` diagnostics and live operation
   counters, especially `/.warp/stats`, so future projection/write bugs are
   observable instead of guessed.
+
+### Changed
+
+- Gate status documentation now records the G2b caveat explicitly: G2b proves
+  only `/echo/head.json` as Echo-projected normal file content. G1 fixture files
+  and directories remain mostly fixture-backed.
 
 ---
 

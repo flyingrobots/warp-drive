@@ -1359,14 +1359,16 @@ Document this clearly for users of write-mode mounts.
 WARP DRIVE does not implement all POSIX. The table below splits the
 committed subset by release. v0.0.1 is read-only. Writes ship with v0.1.
 
-**v0.0.1 / G2 — read-only subset:**
+**v0.0.1 / G2a-G2b — read-only subset:**
 
-| Operation | Status |
-|---|---|
-| `stat`, `lstat` | ✅ |
-| `opendir`, `readdir` | ✅ |
-| `open(O_RDONLY)`, `read` | ✅ |
-| `symlink`, `readlink` | ✅ |
+| Operation | Gate | Status |
+|---|---|---|
+| `stat`, `lstat` | G1/G2a/G2b | ✅ |
+| `opendir`, `readdir` | G1/G2a/G2b | ✅ |
+| `open(O_RDONLY)`, `read` for fixture paths | G1/G2a/G2b | ✅ |
+| `open(O_RDONLY)`, `read` for `/echo/head.json` | G2b | ✅ |
+| `symlink`, `readlink` | G1/G2a/G2b | ✅ |
+| `/.warp/coordinate`, `/.warp/runtime` | G2a/G2b | ✅ |
 
 **v0.1 / G4–G8 — write + multi-lane subset:**
 
@@ -1394,7 +1396,7 @@ committed subset by release. v0.0.1 is read-only. Writes ship with v0.1.
 Build and maintain this. Mark each tool at each gate. Unexplained
 failures are bugs; understood failures are product decisions.
 
-| Tool | G2 (read) | G4 (write) | G6 (full) | Notes |
+| Tool | G2a/G2b (read) | G4 (write) | G6 (full) | Notes |
 |---|---|---|---|---|
 | `ls` | 🎯 | – | – | |
 | `cat` | 🎯 | – | – | |
@@ -1435,8 +1437,8 @@ Legend: 🎯 target (must work at this gate), ✅ verified, ❌ not supported by
 - **Make stale-basis failure beautiful.** The receipt under
   `/.warp/intents/last` is the project's differentiator. It should make
   users say: *the filesystem knows what happened.*
-- **Maintain the tool compatibility matrix.** Start at G2; update at
-  every gate.
+- **Maintain the tool compatibility matrix.** G2a/G2b started it; update
+  at every gate.
 
 #### SHOULD
 
@@ -1471,8 +1473,9 @@ Legend: 🎯 target (must work at this gate), ✅ verified, ❌ not supported by
 
 #### DON'T
 
-- **DON'T build the daemon before G0 proves embedding impossible.**
-  Embedding first; daemon only if embedding is grotesque.
+- **DON'T resurrect the daemon fallback without a fresh reproduced blocker.**
+  G0 proved native rlib embedding; daemon work now needs an explicit gate or a
+  concrete failure in the rlib path.
 - **DON'T let build-artifact projections into v0.1.** Cool idea; black
   hole. Stays in the backlog.
 - **DON'T use "Git replacement" language before G8.** The early message
@@ -1570,13 +1573,12 @@ If any of these fail, G1 is not done. No gate advances until all pass.
 The plan is concrete enough to be wrong in specific places. That is
 preferable to being abstract enough to be unfalsifiable.
 
-The single most load-bearing question is W2.M4 — can `warp-wasm` be
-loaded outside of a browser/wasm-host context as an embedded library
-inside a Rust FUSE binary? If the answer is yes (likely), the rest
-of the plan is mechanical work and the v0.0.1 ship date is bounded by
-how fast the basis-discipline handlers get tested. If the answer is
-no, the plan reshapes around an Echo daemon, which adds 1-2 weeks but
-doesn't kill the project.
+The single most load-bearing embedding question was W2.M4. G0 closed it:
+`warp-wasm` embeds cleanly as a native Rust rlib inside a Rust FUSE process.
+The remaining execution risk is delivery quality and pace across filesystem
+handlers, observability, and basis-discipline correctness. The v0.0.1 ship date
+is now bounded by test depth and integration stability, not runtime-host
+feasibility.
 
 ~~Recommended first move: spike W2.M4 before committing to anything
 else.~~ **G0 is done** — rlib embedding works cleanly. Build out the

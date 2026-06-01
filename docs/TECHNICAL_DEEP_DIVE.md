@@ -568,10 +568,10 @@ the substrate:
 
 This is a deliberate, named surface — not a leak. Tools that want to be
 WARP-aware (Graft, jedit, etc.) can read here. Tools that don't care can ignore
-`.warp/` entirely.
+`/.warp/` entirely.
 
 After G2b, the next WARP DRIVE gate is not "project another file." It is G3:
-make this `.warp/` surface trustworthy enough that the membrane can explain its
+make this `/.warp/` surface trustworthy enough that the membrane can explain its
 own behavior through live counters, runtime diagnostics, and typed failure
 signals before write semantics arrive.
 
