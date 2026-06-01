@@ -5,13 +5,13 @@
 
 **Status:** PASS
 
-**Date:** 2026-05-31 (America/Los_Angeles)
+**Date:** 2026-06-01 (America/Los_Angeles)
 
 **Branch:** `gate/g2b`
 
 **WARP DRIVE validated commit:** `82a9fdc24484`
 
-**Echo validated commit:** `263c553257af`
+**Echo validated commit:** `d8da6d0478bb`
 
 **Command:**
 
@@ -77,14 +77,14 @@ G2b depends on an Echo-side scaffold in `warp-wasm`.
 Validated Echo commit:
 
 ```text
-263c553257af refactor(warp-wasm): fence WARP DRIVE G2b query scaffold
+d8da6d0478bb test(warp-wasm): harden G2b experimental scaffold invariants
 ```
 
-That commit fences the temporary WARP DRIVE G2b query observer behind Echo's
-explicit, non-default `experimental-warp-drive-g2b` feature. When that feature
-is enabled, native `init_embedded()` registers the observer. The observer handles
-the G2b query id and returns the `/echo/head.json` payload through
-`ObservationPayload::QueryBytes`.
+The validated Echo branch fences the temporary WARP DRIVE G2b query observer
+behind Echo's explicit, non-default `experimental-warp-drive-g2b` feature. When
+that feature is enabled, native `init_embedded()` registers the observer. The
+observer handles the G2b query id and returns the `/echo/head.json` payload
+through `ObservationPayload::QueryBytes`.
 
 This is a scaffold query observer, not the final filesystem contract.
 
@@ -158,7 +158,7 @@ cargo clippy --workspace -- -D warnings
 cargo clippy --manifest-path crates/warp-drive-fuse-echo/Cargo.toml --target-dir target/echo-rlib -- -D warnings
 ```
 
-Echo validation at `263c553257af`:
+Echo validation at `d8da6d0478bb`:
 
 ```sh
 cargo fmt --manifest-path crates/warp-wasm/Cargo.toml
@@ -168,6 +168,7 @@ cargo test --manifest-path crates/warp-wasm/Cargo.toml --features engine --lib d
 cargo check --manifest-path crates/warp-wasm/Cargo.toml --features experimental-warp-drive-g2b
 cargo clippy --manifest-path crates/warp-wasm/Cargo.toml --features experimental-warp-drive-g2b -- -D warnings
 cargo test --manifest-path crates/warp-wasm/Cargo.toml --features experimental-warp-drive-g2b --lib experimental_warp_drive_g2b_tests
+cargo test --manifest-path crates/warp-wasm/Cargo.toml --all-features
 ```
 
 All validation commands passed.
@@ -183,7 +184,7 @@ cargo xtask acceptance --gate g2b --runtime echo-rlib
 Runner setup:
 
 ```text
-Building Docker image `warp-drive-g2b-echo-copyin-59474-1780292047393` from sanitized copies (no bind mounts)...
+Building Docker image `warp-drive-g2b-echo-copyin-42409-1780301507970` from sanitized copies (no bind mounts)...
 Running g2b echo-rlib acceptance in copy-in Docker container...
 Copy-in acceptance isolation:
   PASS no git metadata in copied repos
@@ -191,7 +192,7 @@ Building local-only warp-drive-fuse Echo binary...
 Running g2b echo-rlib acceptance script...
 === WARP DRIVE G2b acceptance ===
 
-Mounting at /tmp/warp-g2b.HMEWRX (echo-rlib backend, G2b gate) ...
+Mounting at /tmp/warp-g2b.Bjh0tk (echo-rlib backend, G2b gate) ...
 Mounted (fuse pid 2786).
 ```
 
@@ -280,8 +281,8 @@ G2b GATE PASSED  (58 / 58 assertions)
 Cleanup:
 
 ```text
-Untagged: warp-drive-g2b-echo-copyin-59474-1780292047393:latest
-Deleted: sha256:0ac1da577a51f74254aab04fd791fdc2b5829fbcf1dbb8c313b48256589fd7c9
+Untagged: warp-drive-g2b-echo-copyin-42409-1780301507970:latest
+Deleted: sha256:b3e4b947202c17d0b0e28b4f3c6526bd85a2bcd315b96430235d34c8cb14bdd0
 ```
 
 ## Caveats

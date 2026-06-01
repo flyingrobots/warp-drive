@@ -183,7 +183,7 @@ Acceptance must keep the G1 baseline:
 Acceptance must keep the G2a baseline:
 
 1. `/.warp/coordinate` contains `worldline`, `frontier`, `state_root`, and
-   `projection_hash`.
+   `artifact_hash`.
 2. Those hashes are non-zero 64-character lowercase hex strings.
 3. `/.warp/runtime` identifies `echo-rlib`.
 
