@@ -55,9 +55,10 @@ impl fmt::Debug for NodeContent {
         match self {
             Self::Bytes(bytes) => {
                 let preview_len = bytes.len().min(DEBUG_PREVIEW_BYTES);
+                let preview: &[u8] = &bytes[..preview_len];
                 f.debug_struct("Bytes")
                     .field("len", &bytes.len())
-                    .field("preview", &&bytes[..preview_len])
+                    .field("preview", &preview)
                     .field("truncated", &(preview_len < bytes.len()))
                     .finish()
             }

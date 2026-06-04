@@ -86,6 +86,9 @@ fn node_attr(node: &VirtualNode) -> FileAttr {
 /// Returning `idx + 1` produces a dense 1-based offset sequence. The kernel
 /// passes `next_offset` of the last consumed entry as `offset` in the following
 /// `readdir` call, giving us a stable pagination cursor.
+///
+/// The overflow path is defensive only: real fixture entry counts are tiny, but
+/// this saturates if a platform-sized index cannot be represented as `u64`.
 fn next_offset(idx: usize) -> u64 {
     u64::try_from(idx.saturating_add(1)).unwrap_or(u64::MAX)
 }
