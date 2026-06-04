@@ -10,6 +10,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- G3 design draft for live `/.warp/` diagnostics and monotonic operation
+  counters.
 - G2b passed and merged: `/echo/head.json` proves the first Echo-projected
   normal regular-file bytes through
   `ObservationProjection::Query -> ObservationPayload::QueryBytes`.
