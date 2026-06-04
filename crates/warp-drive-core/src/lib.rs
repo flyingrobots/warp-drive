@@ -48,22 +48,68 @@ pub enum NodeContent {
     Link(Vec<u8>),
 }
 
+const DEBUG_PREVIEW_BYTES: usize = 64;
+const DEBUG_PREVIEW_CHILDREN: usize = 16;
+
+struct DebugChildEntries<'a>(&'a [(Ino, Vec<u8>)]);
+
+impl fmt::Debug for DebugChildEntries<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut list = f.debug_list();
+        for (ino, name) in self.0 {
+            list.entry(&DebugChildEntry {
+                ino: *ino,
+                name: name.as_slice(),
+            });
+        }
+        list.finish()
+    }
+}
+
+struct DebugChildEntry<'a> {
+    ino: Ino,
+    name: &'a [u8],
+}
+
+impl fmt::Debug for DebugChildEntry<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let preview_len = self.name.len().min(DEBUG_PREVIEW_BYTES);
+        let preview: &[u8] = &self.name[..preview_len];
+        f.debug_struct("Child")
+            .field("ino", &self.ino)
+            .field("name_len", &self.name.len())
+            .field("name_preview", &preview)
+            .field("name_truncated", &(preview_len < self.name.len()))
+            .finish()
+    }
+}
+
+fn debug_bytes_variant(name: &str, bytes: &[u8], f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let preview_len = bytes.len().min(DEBUG_PREVIEW_BYTES);
+    let preview: &[u8] = &bytes[..preview_len];
+    f.debug_struct(name)
+        .field("len", &bytes.len())
+        .field("preview", &preview)
+        .field("truncated", &(preview_len < bytes.len()))
+        .finish()
+}
+
+fn debug_children(children: &[(Ino, Vec<u8>)], f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let preview_len = children.len().min(DEBUG_PREVIEW_CHILDREN);
+    let preview = DebugChildEntries(&children[..preview_len]);
+    f.debug_struct("Children")
+        .field("len", &children.len())
+        .field("preview", &preview)
+        .field("entries_truncated", &(preview_len < children.len()))
+        .finish()
+}
+
 impl fmt::Debug for NodeContent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        const DEBUG_PREVIEW_BYTES: usize = 64;
-
         match self {
-            Self::Bytes(bytes) => {
-                let preview_len = bytes.len().min(DEBUG_PREVIEW_BYTES);
-                let preview: &[u8] = &bytes[..preview_len];
-                f.debug_struct("Bytes")
-                    .field("len", &bytes.len())
-                    .field("preview", &preview)
-                    .field("truncated", &(preview_len < bytes.len()))
-                    .finish()
-            }
-            Self::Children(children) => f.debug_tuple("Children").field(children).finish(),
-            Self::Link(target) => f.debug_tuple("Link").field(target).finish(),
+            Self::Bytes(bytes) => debug_bytes_variant("Bytes", bytes, f),
+            Self::Children(children) => debug_children(children, f),
+            Self::Link(target) => debug_bytes_variant("Link", target, f),
         }
     }
 }
@@ -539,5 +585,54 @@ impl FixtureTree {
 impl Default for FixtureTree {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Ino, NodeContent};
+
+    fn long_payload() -> Vec<u8> {
+        (0_u8..80).collect()
+    }
+
+    #[test]
+    fn node_content_debug_bounds_regular_file_bytes() {
+        let debug = format!("{:?}", NodeContent::Bytes(long_payload()));
+
+        assert!(debug.contains("len: 80"));
+        assert!(debug.contains("truncated: true"));
+        assert!(!debug.contains("79"));
+    }
+
+    #[test]
+    fn node_content_debug_bounds_symlink_target_bytes() {
+        let debug = format!("{:?}", NodeContent::Link(long_payload()));
+
+        assert!(debug.contains("len: 80"));
+        assert!(debug.contains("truncated: true"));
+        assert!(!debug.contains("79"));
+    }
+
+    #[test]
+    fn node_content_debug_bounds_child_names_and_entry_count() {
+        let children: Vec<(Ino, Vec<u8>)> = (0_u64..20)
+            .map(|idx| {
+                let name = if idx == 0 {
+                    long_payload()
+                } else {
+                    idx.to_string().into_bytes()
+                };
+                (Ino(idx), name)
+            })
+            .collect();
+
+        let debug = format!("{:?}", NodeContent::Children(children));
+
+        assert!(debug.contains("len: 20"));
+        assert!(debug.contains("entries_truncated: true"));
+        assert!(debug.contains("name_truncated: true"));
+        assert!(!debug.contains("79"));
+        assert!(!debug.contains("Ino(19)"));
     }
 }
