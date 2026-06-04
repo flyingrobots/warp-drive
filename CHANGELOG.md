@@ -30,6 +30,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `NodeContent` debug output now uses bounded previews for file bytes, symlink
+  targets, and directory child entries.
 - Gate status documentation now records the G2b caveat explicitly: G2b proves
   only `/echo/head.json` as Echo-projected normal file content. G1 fixture files
   and directories remain mostly fixture-backed.
