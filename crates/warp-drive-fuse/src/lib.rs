@@ -8,20 +8,23 @@
 //! dependencies to the default workspace.
 
 mod adapter;
+mod stats;
 
 use std::path::Path;
 
 use warp_drive_core::FixtureTree;
 
 use crate::adapter::FuseAdapter;
+pub use crate::stats::{GateLabel, MountStats, RuntimeLabel};
 
-/// Mount `tree` as a read-only WARP DRIVE FUSE filesystem.
+/// Mount `tree` as a read-only WARP DRIVE FUSE filesystem, serving live
+/// diagnostics from `stats` at `/.warp/stats`.
 ///
 /// # Errors
 ///
 /// Returns any error produced by `fuser::mount2`, including missing FUSE
 /// support or mount permission failures.
-pub fn mount_tree(tree: FixtureTree, mount: &Path) -> std::io::Result<()> {
+pub fn mount_tree(tree: FixtureTree, stats: MountStats, mount: &Path) -> std::io::Result<()> {
     let mut config = fuser::Config::default();
     config.mount_options = vec![
         fuser::MountOption::RO,
@@ -30,5 +33,5 @@ pub fn mount_tree(tree: FixtureTree, mount: &Path) -> std::io::Result<()> {
         fuser::MountOption::DefaultPermissions,
     ];
 
-    fuser::mount2(FuseAdapter::new(tree), mount, &config)
+    fuser::mount2(FuseAdapter::new(tree, stats), mount, &config)
 }

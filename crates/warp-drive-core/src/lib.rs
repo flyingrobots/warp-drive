@@ -27,6 +27,31 @@ pub struct Ino(pub u64);
 /// Root inode — always 1 per FUSE convention.
 pub const ROOT_INO: Ino = Ino(1);
 
+/// Inode of `/.warp/stats`.
+///
+/// The FUSE adapter always serves this inode's content live (see G3): the
+/// bytes stored in the fixture tree for this inode are an unreachable
+/// sentinel, never what a `read()` of this path actually returns.
+pub const WARP_STATS_INO: Ino = Ino(13);
+
+/// Schema version shared by the G3 `/.warp/runtime` and `/.warp/stats`
+/// diagnostic surfaces. A single source of truth — every JSON builder that
+/// emits a `"schema_version"` field for those two files must use this
+/// constant instead of an independently hardcoded literal.
+pub const WARP_DIAGNOSTICS_SCHEMA_VERSION: u32 = 1;
+
+/// The build profile this binary was compiled with.
+///
+/// Pure and deterministic — no OS, environment, or wall-clock dependency.
+#[must_use]
+pub const fn build_mode() -> &'static str {
+    if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    }
+}
+
 /// Kind of virtual filesystem node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeKind {
@@ -378,27 +403,17 @@ impl FixtureTree {
         );
 
         // ── /.warp/stats (ino 13) ────────────────────────────────────────────
-        // Static placeholder at G1. Live atomic counters arrive at G3.
+        // Unreachable sentinel as of G3: the FUSE adapter always serves this
+        // inode's GETATTR/READ from a live `MountStats` snapshot instead of
+        // these stored bytes. The bytes only need to exist so the node has a
+        // `RegularFile` kind for `lookup`/`readdir`/path-shape purposes.
         nodes.insert(
-            Ino(13),
+            WARP_STATS_INO,
             VirtualNode {
-                ino: Ino(13),
+                ino: WARP_STATS_INO,
                 parent_ino: Ino(10),
                 kind: NodeKind::RegularFile,
-                content: NodeContent::Bytes(
-                    b"{\
-                  \"gate\":\"G1\",\
-                  \"status\":\"static-placeholder\",\
-                  \"note\":\"live counters arrive at G3\",\
-                  \"lookup_count\":0,\
-                  \"getattr_count\":0,\
-                  \"readdir_count\":0,\
-                  \"open_count\":0,\
-                  \"read_count\":0,\
-                  \"readlink_count\":0\
-                  }\n"
-                    .to_vec(),
-                ),
+                content: NodeContent::Bytes(b"{}".to_vec()),
             },
         );
 
@@ -412,7 +427,7 @@ impl FixtureTree {
                 content: NodeContent::Children(vec![
                     (Ino(11), b"coordinate".to_vec()),
                     (Ino(12), b"runtime".to_vec()),
-                    (Ino(13), b"stats".to_vec()),
+                    (WARP_STATS_INO, b"stats".to_vec()),
                 ]),
             },
         );
@@ -443,6 +458,10 @@ impl FixtureTree {
     /// This is the G2a bridge: the POSIX tree stays seeded from the G1 fixture,
     /// while runtime metadata files can be produced by an external backend.
     ///
+    /// `/.warp/stats` is not a parameter here: as of G3 the FUSE adapter
+    /// always serves that inode's content live from `MountStats`, so any
+    /// caller-provided bytes for it would be dead on arrival.
+    ///
     /// # Errors
     ///
     /// Returns [`FixtureTreeError`] if the hardcoded `.warp/` metadata inodes
@@ -450,12 +469,10 @@ impl FixtureTree {
     pub fn with_warp_metadata(
         coordinate: Vec<u8>,
         runtime: Vec<u8>,
-        stats: Vec<u8>,
     ) -> Result<Self, FixtureTreeError> {
         let mut tree = Self::new();
         tree.replace_file_bytes(Ino(11), coordinate)?;
         tree.replace_file_bytes(Ino(12), runtime)?;
-        tree.replace_file_bytes(Ino(13), stats)?;
         Ok(tree)
     }
 
@@ -473,10 +490,9 @@ impl FixtureTree {
     pub fn with_warp_metadata_and_echo_head_file(
         coordinate: Vec<u8>,
         runtime: Vec<u8>,
-        stats: Vec<u8>,
         echo_head_json: Vec<u8>,
     ) -> Result<Self, FixtureTreeError> {
-        let mut tree = Self::with_warp_metadata(coordinate, runtime, stats)?;
+        let mut tree = Self::with_warp_metadata(coordinate, runtime)?;
         tree.insert_echo_head_file(echo_head_json)?;
         Ok(tree)
     }
@@ -590,10 +606,53 @@ impl Default for FixtureTree {
 
 #[cfg(test)]
 mod tests {
-    use super::{Ino, NodeContent};
+    use super::{FixtureTree, Ino, NodeContent, NodeKind, WARP_STATS_INO};
 
     fn long_payload() -> Vec<u8> {
         (0_u8..80).collect()
+    }
+
+    /// Regular-file bytes at `ino`, or empty if the node is missing/not a
+    /// regular file — lets assertions below fail with a normal comparison
+    /// diff instead of reaching for a banned `unwrap`/`expect`/`panic!`.
+    fn regular_file_bytes(tree: &FixtureTree, ino: Ino) -> Vec<u8> {
+        match tree.get(ino).map(|node| &node.content) {
+            Some(NodeContent::Bytes(bytes)) => bytes.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    #[test]
+    fn new_serves_g1_labeled_coordinate_and_runtime() {
+        let tree = FixtureTree::new();
+
+        let coordinate = String::from_utf8_lossy(&regular_file_bytes(&tree, Ino(11))).into_owned();
+        assert!(coordinate.contains("\"gate\":\"G1\""));
+
+        let runtime = String::from_utf8_lossy(&regular_file_bytes(&tree, Ino(12))).into_owned();
+        assert!(runtime.contains("\"kind\":\"in-memory\""));
+        assert!(runtime.contains("\"gate\":\"G1\""));
+    }
+
+    #[test]
+    fn with_warp_metadata_replaces_only_coordinate_and_runtime() {
+        let tree =
+            FixtureTree::with_warp_metadata(b"coord-bytes".to_vec(), b"runtime-bytes".to_vec())
+                .unwrap_or_else(|_| FixtureTree::new());
+
+        assert_eq!(regular_file_bytes(&tree, Ino(11)), b"coord-bytes");
+        assert_eq!(regular_file_bytes(&tree, Ino(12)), b"runtime-bytes");
+
+        // Normal fixture files are untouched by the metadata overlay.
+        let readme = String::from_utf8_lossy(&regular_file_bytes(&tree, Ino(2))).into_owned();
+        assert!(readme.contains("WARP DRIVE G1 Fixture"));
+    }
+
+    #[test]
+    fn warp_stats_ino_is_a_regular_file() {
+        let tree = FixtureTree::new();
+        let kind = tree.get(WARP_STATS_INO).map(|node| node.kind);
+        assert_eq!(kind, Some(NodeKind::RegularFile));
     }
 
     #[test]

@@ -9,7 +9,7 @@
 #   docker run --rm --device /dev/fuse --cap-add SYS_ADMIN \
 #     --security-opt apparmor=unconfined warp-drive-g1
 
-FROM rust:latest
+FROM rust:1.90.0-bookworm
 WORKDIR /app
 
 RUN apt-get update && \

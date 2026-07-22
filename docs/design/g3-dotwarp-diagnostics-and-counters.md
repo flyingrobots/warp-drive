@@ -47,6 +47,7 @@ bind-mount a live host repository into the acceptance container.
 {
   "gate": "G3",
   "runtime": "in-memory",
+  "schema_version": 1,
   "lookup_count": 0,
   "getattr_count": 0,
   "readdir_count": 0,
@@ -57,6 +58,10 @@ bind-mount a live host repository into the acceptance container.
   "runtime_observe_error_count": 0
 }
 ```
+
+`schema_version` is `warp_drive_core::WARP_DIAGNOSTICS_SCHEMA_VERSION`, a
+single constant shared with `/.warp/runtime` below — never an independently
+hardcoded literal in more than one place.
 
 The exact JSON order is not a public API, but the acceptance script may parse
 or grep the committed shape for this gate. The values must be unsigned decimal
@@ -105,7 +110,8 @@ Minimum in-memory shape:
   "runtime": "in-memory",
   "driver": "warp-drive-driver-memory",
   "build_mode": "debug",
-  "stats": "live"
+  "stats": "live",
+  "schema_version": 1
 }
 ```
 
@@ -117,7 +123,8 @@ Minimum Echo shape:
   "runtime": "echo-rlib",
   "driver": "warp-wasm",
   "build_mode": "debug",
-  "stats": "live"
+  "stats": "live",
+  "schema_version": 1
 }
 ```
 
@@ -207,17 +214,92 @@ G3 does not implement:
 6. Background frontier refresh.
 7. Cache-hit or latency counters beyond the minimum required fields.
 8. `.warp/holograms`, `.warp/intents`, `.warp/errors`, or `.warp/cache`.
+9. `mmap` of `/.warp/stats` — direct I/O on that inode disables shared
+   `mmap` by default.
 
 Those surfaces remain important, but they are not required to prove that the
 membrane can tell the truth about its current read-only behavior.
 
-## Open questions
+## Resolved decisions
 
-1. Should diagnostic self-reads get a separate `diagnostic_read_count` in a
-   later gate?
-2. Should `runtime_observe_count` count startup observations only, or only
-   observations after FUSE mount begins, once live refresh exists?
-3. Should `/.warp/runtime` and `/.warp/stats` share a version field before
-   external tools consume them?
-4. Should the G3 acceptance script use `jq`, Python, or a tiny Rust helper for
-   JSON parsing inside the Docker image?
+These resolve the open questions this doc originally posed, plus the
+additional semantics the implementation depends on. This section is
+authoritative; an implementation plan living elsewhere must not contradict
+it.
+
+1. **`runtime_observe_count` scope.** Precisely: counts successful calls to
+   `warp_wasm::observe_cbor` initiated by `EchoBackend` — not "observations
+   performed during startup" generically, which could be misread to include
+   `init_embedded()`'s own internal work. This is real accounting owned by
+   the backend that performs the calls (`RuntimeObservationStats`, returned
+   from `EchoBackend::into_parts()`), never a constant hardcoded downstream
+   in a binary. G3 has no live refresh, so nothing increments this after
+   mount.
+2. **`runtime_observe_error_count`** is always `0` for any successfully
+   constructed backend: an observation error aborts `init_*()` via `?`
+   before a backend is ever returned. This is not a durable count of failed
+   startup attempts — it only ever reports on the path that reached a live
+   mount.
+3. **FUSE callback counts, not userspace syscall counts.** One `cat` may
+   produce several `read()` callbacks, or — without a data-cache policy —
+   none at all if the kernel serves it from cache. Acceptance must assert
+   with `>` or bulk lower-bound deltas, never "+1 per command". A single
+   before/after probe pair is invalid on its own: the probe's own diagnostic
+   reads (the `cat`s used to fetch the two snapshots) also trigger
+   lookups/getattrs and would contaminate a causal single-probe claim. Use
+   bulk probes with a known minimum count instead.
+4. **Per-mount, process-global counters.** Equivalent in this design — one
+   mount per process. A future multi-mount design should revisit this.
+5. **Per-read snapshot consistency, not per-open.** Every `/.warp/stats`
+   `read()` serializes a fresh snapshot independently. Coherent snapshots
+   across multiple reads within one `open()` are an explicit non-goal for
+   G3 (a per-open frozen snapshot is a documented future idea, not built
+   now).
+6. **Data-cache policy.** Every successful read-only `open()` of the stats
+   inode returns `FOPEN_DIRECT_IO`, so the kernel page cache cannot serve a
+   stale `read()` on repeat reads within one open — this is the mechanism
+   that makes the counters live, not merely correctly-sized. Normal fixture
+   files keep cached I/O. Scope note: an acceptance test that opens the file
+   twice (two separate `cat` invocations) and observes fresh content each
+   time proves *freshness across ordinary tool usage*, not specifically that
+   `FOPEN_DIRECT_IO` is the cause — Linux already invalidates page cache on
+   open by default when `FOPEN_KEEP_CACHE` is absent. The flag choice itself
+   is proven by a unit test on the adapter's `open_reply_flags` policy
+   function. Direct I/O disables shared `mmap` by default for this inode;
+   `mmap` of `/.warp/stats` is out of scope for G3 (see Non-goals).
+7. **Attribute-cache policy.** The stats inode gets a zero-duration TTL for
+   both `lookup()`'s entry reply and `getattr()`'s attribute reply (one
+   `fuser` TTL argument governs both caches). Normal fixture files keep the
+   existing 1s TTL. This is belt-and-suspenders with direct I/O and
+   constant-width JSON, not a substitute for either.
+8. **Active-mount gate vs. payload-provenance gate.** `/.warp/coordinate`,
+   `/.warp/runtime`, and `/.warp/stats`'s `"gate"` field identifies which CLI
+   `--gate`/fixture-construction path built this mount. `/echo/head.json`'s
+   own `"gate"` field is Echo-side payload content G3 does not touch — under
+   `--gate g3 --runtime echo-rlib` it legitimately still reads `"G2b"`,
+   because G3 reuses G2b's exact projection call unmodified. Acceptance
+   must assert this distinction explicitly and must never mechanically
+   relabel every `G2b` string to `G3` when adapting the G2b script.
+9. **Schema versioning, single source of truth.** One constant,
+   `warp_drive_core::WARP_DIAGNOSTICS_SCHEMA_VERSION = 1`, used by
+   `MountStats::snapshot_json`, the in-memory G3 runtime-JSON builder, and
+   the Echo-backend G3 runtime-JSON builder — never three independent
+   literal `1`s. Both `/.warp/runtime` and `/.warp/stats` carry
+   `"schema_version":1` under G3. Legacy G1/G2 runtime payloads (served by
+   `init()`/`init_g2b()`, untouched by G3) keep their existing unversioned
+   shape — their frozen acceptance scripts don't expect the field.
+10. **Acceptance JSON parsing.** Plain bash + `sed`. No `jq`, Python, or
+    Rust helper added to either Docker image. Numeric fields (counters,
+    `schema_version`) are parsed and compared numerically — never
+    substring-matched, since `"schema_version":1` would also match
+    `10`/`11`/`123`.
+11. **Every currently-exposed gate CLI combination keeps working on `main`**,
+    including bare historical defaults: `cargo xtask acceptance` (→ G1,
+    in-memory) and `cargo xtask acceptance --runtime echo-rlib` (→ G2a), not
+    just their explicit `--gate` spellings. All ten `(runtime, gate)`
+    combinations (2 runtimes × {none, G1, G2a, G2b, G3}) are enumerated
+    explicitly and individually tested; invalid combinations produce
+    explicit, matched errors, never a silent wildcard fallback.
+12. **Diagnostic self-reads.** No separate `diagnostic_read_count` in G3 —
+    deferred; `read_count`'s exemption for the stats inode is sufficient for
+    this gate's proof.
