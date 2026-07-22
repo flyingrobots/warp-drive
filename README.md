@@ -19,8 +19,17 @@ mount -t warpdrive @agent-1:/repo /Users/me/agent-lane
 
 ## Status
 
-**Vapor.** Nothing is built. This repository currently exists to hold the
-design — see [`docs/TECHNICAL_DEEP_DIVE.md`](docs/TECHNICAL_DEEP_DIVE.md).
+**Alpha in progress.** The design lives in
+[`docs/TECHNICAL_DEEP_DIVE.md`](docs/TECHNICAL_DEEP_DIVE.md); implementation
+is underway through gated milestones. G1 (POSIX read path), G2a/G2b (Echo
+coordinate metadata and the first Echo-projected file), and G3 (live
+`.warp/` diagnostics and operation counters) have all passed — see
+[`docs/gates/`](docs/gates/) for their proof transcripts.
+`warp-drive-core` and `warp-drive-fuse` are active workspace crates. The
+Echo-backend crates (`warp-drive-echo-backend`, `warp-drive-fuse-echo`,
+`warp-drive-g0-spike`) exist in-tree but are excluded from the default
+workspace until the Echo-side adapter seam is settled (see the note in
+`Cargo.toml`).
 
 The deep dive is intentionally substrate-agnostic. WARP DRIVE will work
 against any runtime that speaks the [Continuum](#origin) causal-history

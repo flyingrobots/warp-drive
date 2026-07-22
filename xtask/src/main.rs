@@ -53,6 +53,10 @@ enum Task {
         /// Runtime back-end to mount.
         #[arg(long, value_enum, default_value = "in-memory")]
         runtime: Runtime,
+
+        /// Gate to mount. Defaults to G1 for in-memory, G2a for echo-rlib.
+        #[arg(long, value_enum)]
+        gate: Option<Gate>,
     },
 
     /// Unmount the WARP DRIVE FUSE filesystem.
@@ -106,6 +110,9 @@ enum Gate {
     /// First Echo-projected regular-file bytes.
     #[value(name = "g2b")]
     G2b,
+    /// Live `/.warp/` diagnostics and operation counters.
+    #[value(name = "g3")]
+    G3,
 }
 
 impl Gate {
@@ -114,7 +121,59 @@ impl Gate {
             Self::G1 => "g1",
             Self::G2a => "g2a",
             Self::G2b => "g2b",
+            Self::G3 => "g3",
         }
+    }
+}
+
+/// Resolve the effective gate for a `(Runtime, Option<Gate>)` request.
+///
+/// All ten combinations (2 runtimes × {none, G1, G2a, G2b, G3}) are
+/// enumerated explicitly below — an invalid combination is a matched error,
+/// never a silent wildcard fallback. Shared by `mount` and `acceptance` so
+/// the two commands can never disagree about what's valid.
+const fn resolve_gate(runtime: Runtime, gate: Option<Gate>) -> Result<Gate, GateMismatch> {
+    match (runtime, gate) {
+        (Runtime::InMemory, None) => Ok(Gate::G1),
+        (Runtime::InMemory, Some(Gate::G1)) => Ok(Gate::G1),
+        (Runtime::InMemory, Some(Gate::G3)) => Ok(Gate::G3),
+        (Runtime::InMemory, Some(Gate::G2a)) => Err(GateMismatch {
+            runtime: Runtime::InMemory,
+            gate: Gate::G2a,
+        }),
+        (Runtime::InMemory, Some(Gate::G2b)) => Err(GateMismatch {
+            runtime: Runtime::InMemory,
+            gate: Gate::G2b,
+        }),
+        (Runtime::EchoRlib, None) => Ok(Gate::G2a),
+        (Runtime::EchoRlib, Some(Gate::G2a)) => Ok(Gate::G2a),
+        (Runtime::EchoRlib, Some(Gate::G2b)) => Ok(Gate::G2b),
+        (Runtime::EchoRlib, Some(Gate::G3)) => Ok(Gate::G3),
+        (Runtime::EchoRlib, Some(Gate::G1)) => Err(GateMismatch {
+            runtime: Runtime::EchoRlib,
+            gate: Gate::G1,
+        }),
+    }
+}
+
+/// An explicitly-rejected `(Runtime, Gate)` combination.
+#[derive(Debug, PartialEq, Eq)]
+struct GateMismatch {
+    runtime: Runtime,
+    gate: Gate,
+}
+
+impl GateMismatch {
+    fn into_message(self) -> String {
+        let alternative = match self.runtime {
+            Runtime::InMemory => "echo-rlib",
+            Runtime::EchoRlib => "in-memory",
+        };
+        format!(
+            "runtime {:?} does not support gate {}; use --runtime {alternative}",
+            self.runtime,
+            self.gate.as_str()
+        )
     }
 }
 
@@ -122,7 +181,11 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
         Task::InstallDeps => install_deps(),
-        Task::Mount { path, runtime } => mount(&path, runtime),
+        Task::Mount {
+            path,
+            runtime,
+            gate,
+        } => mount(&path, runtime, gate),
         Task::Unmount { path } => unmount(&path),
         Task::Acceptance { tag, gate, runtime } => acceptance(&tag, runtime, gate),
     };
@@ -156,10 +219,12 @@ fn install_deps_impl() -> Result<(), String> {
 
 // ── mount ────────────────────────────────────────────────────────────────────
 
-fn mount(path: &Path, runtime: Runtime) -> Result<(), String> {
+fn mount(path: &Path, runtime: Runtime, gate: Option<Gate>) -> Result<(), String> {
+    let resolved_gate = resolve_gate(runtime, gate).map_err(GateMismatch::into_message)?;
     let p = path_str(path)?;
     println!(
-        "Mounting WARP DRIVE at {p} with {runtime:?} (blocks until unmounted — Ctrl-C to stop)..."
+        "Mounting WARP DRIVE at {p} with {runtime:?} gate {} (blocks until unmounted — Ctrl-C to stop)...",
+        resolved_gate.as_str()
     );
     match runtime {
         Runtime::InMemory => run(
@@ -171,6 +236,8 @@ fn mount(path: &Path, runtime: Runtime) -> Result<(), String> {
                 "--",
                 "--runtime",
                 "in-memory",
+                "--gate",
+                resolved_gate.as_str(),
                 "--mount",
                 p,
             ],
@@ -186,6 +253,8 @@ fn mount(path: &Path, runtime: Runtime) -> Result<(), String> {
                 "--",
                 "--runtime",
                 "echo-rlib",
+                "--gate",
+                resolved_gate.as_str(),
                 "--mount",
                 p,
             ],
@@ -222,15 +291,15 @@ fn unmount_impl(_path: &Path) -> Result<(), String> {
 // ── acceptance ───────────────────────────────────────────────────────────────
 
 fn acceptance(tag: &str, runtime: Runtime, gate: Option<Gate>) -> Result<(), String> {
-    match runtime {
-        Runtime::InMemory => match gate.unwrap_or(Gate::G1) {
-            Gate::G1 => acceptance_in_memory(tag),
-            unsupported => Err(format!(
-                "runtime in-memory does not support gate {}; use --runtime echo-rlib",
-                unsupported.as_str()
-            )),
-        },
-        Runtime::EchoRlib => acceptance_echo_rlib(gate.unwrap_or(Gate::G2a)),
+    let resolved = resolve_gate(runtime, gate).map_err(GateMismatch::into_message)?;
+    match (runtime, resolved) {
+        (Runtime::InMemory, Gate::G1) => acceptance_in_memory(tag),
+        (Runtime::InMemory, Gate::G3) => acceptance_in_memory_g3(tag),
+        (Runtime::EchoRlib, Gate::G2a | Gate::G2b | Gate::G3) => acceptance_echo_rlib(resolved),
+        (runtime, gate) => Err(format!(
+            "internal error: resolve_gate produced an unexpected combination runtime={runtime:?} gate={}",
+            gate.as_str()
+        )),
     }
 }
 
@@ -254,6 +323,28 @@ fn acceptance_in_memory(tag: &str) -> Result<(), String> {
     )
 }
 
+fn acceptance_in_memory_g3(tag: &str) -> Result<(), String> {
+    println!("Building Docker image `{tag}`...");
+    run("docker", &["build", "-t", tag, "."])?;
+    println!("Running G3 in-memory acceptance test in Docker...");
+    run(
+        "docker",
+        &[
+            "run",
+            "--rm",
+            "--device",
+            "/dev/fuse",
+            "--cap-add",
+            "SYS_ADMIN",
+            "--security-opt",
+            "apparmor=unconfined",
+            tag,
+            "bash",
+            "scripts/acceptance-g3.sh",
+        ],
+    )
+}
+
 fn acceptance_echo_rlib(gate: Gate) -> Result<(), String> {
     let script = match gate {
         Gate::G1 => {
@@ -263,6 +354,7 @@ fn acceptance_echo_rlib(gate: Gate) -> Result<(), String> {
         }
         Gate::G2a => "scripts/acceptance-g2.sh",
         Gate::G2b => "scripts/acceptance-g2b.sh",
+        Gate::G3 => "scripts/acceptance-g3-echo.sh",
     };
 
     if env::var_os("WARP_DRIVE_ACCEPTANCE_IN_CONTAINER").is_none() {
@@ -288,7 +380,10 @@ fn acceptance_echo_rlib(gate: Gate) -> Result<(), String> {
         .join("echo-rlib")
         .join("debug");
     let path = prepend_path(target_debug)?;
-    run_with_path(script, &[], &path)
+    // Always invoke the script through bash explicitly rather than executing
+    // it directly — no gate script (new or existing) should depend on its
+    // Git-tracked executable bit surviving a checkout/copy.
+    run_with_path("bash", &[script], &path)
 }
 
 fn assert_sanitized_container_checkout() -> Result<(), String> {
@@ -559,4 +654,41 @@ fn prepend_path(first: PathBuf) -> Result<std::ffi::OsString, String> {
     let mut paths = vec![first];
     paths.extend(env::split_paths(&existing));
     env::join_paths(paths).map_err(|e| format!("failed to build PATH: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Gate, Runtime, resolve_gate};
+
+    #[test]
+    fn resolve_gate_covers_all_ten_combinations() {
+        // in-memory
+        assert_eq!(resolve_gate(Runtime::InMemory, None), Ok(Gate::G1));
+        assert_eq!(
+            resolve_gate(Runtime::InMemory, Some(Gate::G1)),
+            Ok(Gate::G1)
+        );
+        assert!(resolve_gate(Runtime::InMemory, Some(Gate::G2a)).is_err());
+        assert!(resolve_gate(Runtime::InMemory, Some(Gate::G2b)).is_err());
+        assert_eq!(
+            resolve_gate(Runtime::InMemory, Some(Gate::G3)),
+            Ok(Gate::G3)
+        );
+
+        // echo-rlib
+        assert_eq!(resolve_gate(Runtime::EchoRlib, None), Ok(Gate::G2a));
+        assert!(resolve_gate(Runtime::EchoRlib, Some(Gate::G1)).is_err());
+        assert_eq!(
+            resolve_gate(Runtime::EchoRlib, Some(Gate::G2a)),
+            Ok(Gate::G2a)
+        );
+        assert_eq!(
+            resolve_gate(Runtime::EchoRlib, Some(Gate::G2b)),
+            Ok(Gate::G2b)
+        );
+        assert_eq!(
+            resolve_gate(Runtime::EchoRlib, Some(Gate::G3)),
+            Ok(Gate::G3)
+        );
+    }
 }

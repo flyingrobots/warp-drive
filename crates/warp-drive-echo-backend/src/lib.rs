@@ -10,6 +10,11 @@
 //!
 //! G2b adds one normal projected file, `/echo/head.json`, whose bytes come from
 //! an Echo `QueryView` observation returning `ObservationPayload::QueryBytes`.
+//!
+//! G3 adds no new Echo call — `init_g3()` performs the exact same two
+//! observations as `init_g2b()` — but reports real
+//! [`RuntimeObservationStats`] accounting instead of a downstream-hardcoded
+//! constant, and stamps `/.warp/runtime` with the G3 diagnostics shape.
 
 use std::error::Error;
 use std::fmt;
@@ -20,9 +25,42 @@ use echo_wasm_abi::kernel_port::{
 };
 use warp_drive_core::FixtureTree;
 
+/// Startup observation accounting produced by [`EchoBackend`].
+///
+/// Fields are private and only readable through the documented getters below
+/// — the downstream FUSE binary consumes this accounting, it does not get to
+/// alter the backend's claim about what it actually did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RuntimeObservationStats {
+    observe_count: u64,
+    observe_error_count: u64,
+}
+
+impl RuntimeObservationStats {
+    fn record_success(&mut self) {
+        self.observe_count += 1;
+    }
+
+    /// Number of successful calls to `warp_wasm::observe_cbor` this backend
+    /// issued.
+    #[must_use]
+    pub const fn observe_count(self) -> u64 {
+        self.observe_count
+    }
+
+    /// Always `0` for any successfully constructed [`EchoBackend`] — an
+    /// observation error aborts `init_*()` via `?` before a backend exists to
+    /// report from. Not a durable count of failed startup attempts.
+    #[must_use]
+    pub const fn observe_error_count(self) -> u64 {
+        self.observe_error_count
+    }
+}
+
 /// Backend that owns the cached fixture tree served by the FUSE adapter.
 pub struct EchoBackend {
     tree: FixtureTree,
+    observation_stats: RuntimeObservationStats,
 }
 
 impl EchoBackend {
@@ -35,16 +73,20 @@ impl EchoBackend {
     pub fn init() -> Result<Self, EchoBackendError> {
         let handle = warp_wasm::init_embedded()
             .map_err(|err| EchoBackendError::Init(format!("{}: {}", err.code, err.message)))?;
+        let mut observation_stats = RuntimeObservationStats::default();
         let artifact = observe_head(handle.worldline_id)?;
+        observation_stats.record_success();
         let metadata = EchoCoordinateMetadata::from_artifact(&artifact)?;
         let tree = FixtureTree::with_warp_metadata(
             metadata.coordinate_json("G2a").into_bytes(),
             metadata.runtime_json("G2a").into_bytes(),
-            metadata.stats_json("G2a").into_bytes(),
         )
         .map_err(|err| EchoBackendError::FixtureTree(err.to_string()))?;
 
-        Ok(Self { tree })
+        Ok(Self {
+            tree,
+            observation_stats,
+        })
     }
 
     /// Initialize Echo, observe coordinate metadata, project `/echo/head.json`,
@@ -57,24 +99,68 @@ impl EchoBackend {
     pub fn init_g2b() -> Result<Self, EchoBackendError> {
         let handle = warp_wasm::init_embedded()
             .map_err(|err| EchoBackendError::Init(format!("{}: {}", err.code, err.message)))?;
+        let mut observation_stats = RuntimeObservationStats::default();
         let artifact = observe_head(handle.worldline_id)?;
+        observation_stats.record_success();
         let metadata = EchoCoordinateMetadata::from_artifact(&artifact)?;
         let echo_head_json = observe_echo_head_file(handle.worldline_id, &metadata)?;
+        observation_stats.record_success();
         let tree = FixtureTree::with_warp_metadata_and_echo_head_file(
             metadata.coordinate_json("G2b").into_bytes(),
             metadata.runtime_json("G2b").into_bytes(),
-            metadata.stats_json("G2b").into_bytes(),
             echo_head_json,
         )
         .map_err(|err| EchoBackendError::FixtureTree(err.to_string()))?;
 
-        Ok(Self { tree })
+        Ok(Self {
+            tree,
+            observation_stats,
+        })
+    }
+
+    /// Initialize Echo and build a cached G3 tree.
+    ///
+    /// Performs the exact same two observations as [`Self::init_g2b`] (head +
+    /// query-projected `/echo/head.json`) — G3 adds no new Echo call, only
+    /// live FUSE-side diagnostics and a new `/.warp/runtime` shape.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EchoBackendError`] if Echo initialization, request encoding,
+    /// kernel observation, projection decoding, or fixture construction fails.
+    pub fn init_g3() -> Result<Self, EchoBackendError> {
+        let handle = warp_wasm::init_embedded()
+            .map_err(|err| EchoBackendError::Init(format!("{}: {}", err.code, err.message)))?;
+        let mut observation_stats = RuntimeObservationStats::default();
+        let artifact = observe_head(handle.worldline_id)?;
+        observation_stats.record_success();
+        let metadata = EchoCoordinateMetadata::from_artifact(&artifact)?;
+        let echo_head_json = observe_echo_head_file(handle.worldline_id, &metadata)?;
+        observation_stats.record_success();
+        let tree = FixtureTree::with_warp_metadata_and_echo_head_file(
+            metadata.coordinate_json("G3").into_bytes(),
+            metadata.runtime_json_g3().into_bytes(),
+            echo_head_json,
+        )
+        .map_err(|err| EchoBackendError::FixtureTree(err.to_string()))?;
+
+        Ok(Self {
+            tree,
+            observation_stats,
+        })
     }
 
     /// Consume the backend and return the cached fixture tree.
     #[must_use]
     pub fn into_tree(self) -> FixtureTree {
         self.tree
+    }
+
+    /// Consume the backend, returning its fixture tree and the startup
+    /// observation accounting it actually performed.
+    #[must_use]
+    pub fn into_parts(self) -> (FixtureTree, RuntimeObservationStats) {
+        (self.tree, self.observation_stats)
     }
 }
 
@@ -92,11 +178,17 @@ pub enum EchoBackendError {
     /// Decoding the Echo response failed.
     DecodeResponse(String),
     /// Echo returned the wrong payload kind for the request.
-    UnexpectedPayload { expected: &'static str },
+    UnexpectedPayload {
+        /// The payload kind that was expected.
+        expected: &'static str,
+    },
     /// Echo returned an artifact whose head and resolved coordinate disagree.
     InconsistentArtifact {
+        /// Name of the field that disagreed.
         field: &'static str,
+        /// Value from the observation's `head`.
         head: String,
+        /// Value from the observation's `resolved` coordinate.
         resolved: String,
     },
     /// Cached fixture tree construction failed.
@@ -183,6 +275,10 @@ impl EchoCoordinateMetadata {
         )
     }
 
+    /// `/.warp/runtime` content for `init()` (G2a) and `init_g2b()` (G2b).
+    ///
+    /// Frozen — their acceptance scripts assert on this exact `"kind"`-shaped
+    /// output. G3 uses [`Self::runtime_json_g3`] instead, never this method.
     fn runtime_json(&self, gate: &str) -> String {
         format!(
             "{{\"kind\":\"echo-rlib\",\"driver\":\"warp-wasm\",\"gate\":\"{}\",\"worldline\":\"{}\"}}\n",
@@ -190,10 +286,16 @@ impl EchoCoordinateMetadata {
         )
     }
 
-    fn stats_json(&self, gate: &str) -> String {
+    /// `/.warp/runtime` content for `init_g3()`, per the G3 design doc's
+    /// required shape. Does not touch or replace [`Self::runtime_json`].
+    fn runtime_json_g3(&self) -> String {
         format!(
-            "{{\"gate\":\"{}\",\"status\":\"static-placeholder\",\"note\":\"live counters arrive at G3\",\"lookup_count\":0,\"getattr_count\":0,\"readdir_count\":0,\"open_count\":0,\"read_count\":0,\"readlink_count\":0}}\n",
-            gate
+            "{{\"gate\":\"G3\",\"runtime\":\"echo-rlib\",\"driver\":\"warp-wasm\",\
+              \"build_mode\":\"{}\",\"stats\":\"live\",\"schema_version\":{},\
+              \"worldline\":\"{}\"}}\n",
+            warp_drive_core::build_mode(),
+            warp_drive_core::WARP_DIAGNOSTICS_SCHEMA_VERSION,
+            self.worldline
         )
     }
 }

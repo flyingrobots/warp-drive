@@ -8,7 +8,7 @@ on:
 
 jobs:
   acceptance:
-    name: G1 gate acceptance (Linux / Docker)
+    name: G1 + G3 gate acceptance (Linux / Docker)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,6 +17,8 @@ jobs:
           toolchain: "1.90.0"
       - name: Run G1 acceptance
         run: cargo xtask acceptance
+      - name: Run G3 acceptance (in-memory)
+        run: cargo xtask acceptance --gate g3 --runtime in-memory
 
   unit:
     name: Unit tests

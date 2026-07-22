@@ -8,7 +8,7 @@ edition      = "2024"
 rust-version = "1.90.0"
 license      = "Apache-2.0"
 repository   = "https://github.com/flyingrobots/warp-drive"
-description  = "Local-only Echo rlib projection backend for WARP DRIVE G2 gates"
+description  = "Local-only Echo rlib projection backend for WARP DRIVE G2/G3 gates"
 publish      = false
 
 [dependencies]
@@ -16,3 +16,28 @@ warp-drive-core = { path = "../warp-drive-core" }
 
 echo-wasm-abi = { path = "../../../echo-warp-drive/crates/echo-wasm-abi" }
 warp-wasm     = { path = "../../../echo-warp-drive/crates/warp-wasm", features = ["engine", "experimental-warp-drive-g2b"] }
+
+# This package is excluded from `[workspace] members` (see the root
+# Cargo.toml's `exclude` note), so it does NOT inherit `[workspace.lints]`
+# via `{ workspace = true }`. Duplicated here verbatim rather than left as a
+# build-time surprise — keep in sync with the root manifest.
+[lints.rust]
+warnings        = "deny"
+missing_docs    = "deny"
+unsafe_code     = "forbid"
+unused_must_use = "deny"
+unreachable_pub = "deny"
+
+[lints.clippy]
+all              = { level = "deny", priority = -1 }
+unwrap_used      = "deny"
+expect_used      = "deny"
+panic            = "deny"
+todo             = "deny"
+unimplemented    = "deny"
+dbg_macro        = "deny"
+print_stdout     = "deny"
+print_stderr     = "deny"
+wildcard_imports = "deny"
+enum_glob_use    = "deny"
+multiple_crate_versions = "allow"
