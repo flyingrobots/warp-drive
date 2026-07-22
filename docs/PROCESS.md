@@ -18,28 +18,39 @@ for gate-based development. This document is the cycle doctrine for this repo.
 - A gate record (`docs/gates/GN.md`) is created before the PR merges.
   It includes the acceptance transcript, the commit SHA, the runner, and
   all known caveats.
-- Backlog maintenance happens at gate boundaries, not continuously.
-- The backlog lives in `docs/method/backlog/`. Moving a file between lanes
-  is a decision. Moving it to `graveyard/` is permanent.
 - Design docs for gate work live in `docs/design/`. Pull a backlog item
   before writing the design doc.
+- Cross-gate living behavior (a surface that outlives the gate that
+  introduced it — `.warp/` diagnostics, the `FixtureTree` model, the Echo
+  observation seam) is documented in `docs/topics/<topic>/`, updated
+  whenever that behavior changes, not only at ship sync. See
+  `docs/DOCUMENTATION_STANDARDS.md`.
 - `docs/BEARING.md` and `CHANGELOG.md` are updated on `main` after each
   gate merges (ship sync).
 - An open cycle packet on `main` is repo-truth drift. Stop and repair it
   before continuing.
+
+### Backlog: GitHub Issues, not `docs/method/backlog/`
+
+New planning content — cool ideas, known code smells, deferred work — goes
+to GitHub Issues on this repo. `docs/method/backlog/` is historical: the
+lanes below and their existing cards stay as record, but nothing new gets
+added there. `docs/method/legends/` (the `GATE`/`INFRA` doctrine below) is
+unaffected — it still defines what counts as gate-level vs. infra-level
+work, it just no longer describes a backlog's lane structure for new items.
 
 ---
 
 ## Gate lifecycle
 
 ```text
-backlog item → design doc → RED → GREEN → acceptance run → gate record
+GitHub issue → design doc → RED → GREEN → acceptance run → gate record
   → PR (CI green) → merge to main → ship sync
 ```
 
 ### 1. Design
 
-Pull an item from the backlog into `docs/design/<slug>.md`. The design names:
+Pull an issue into `docs/design/<slug>.md`. The design names:
 
 - The gate condition (exact, falsifiable).
 - The implementation approach.
@@ -92,7 +103,11 @@ After merge, on `main`:
 
 ---
 
-## Backlog lanes
+## Backlog lanes (historical)
+
+`docs/method/backlog/` predates the move to GitHub Issues. Existing cards
+stay in place as record; the lane meanings below still apply to reading
+them, but new items are GitHub issues, not new cards.
 
 | Lane | What goes here |
 |------|----------------|
@@ -120,5 +135,6 @@ After a gate branch merges to `main`:
 - [ ] `docs/BEARING.md` updated (current priority, recent ships)
 - [ ] `CHANGELOG.md` entry added
 - [ ] `docs/VISION.md` refreshed if the gate changes the project shape
-- [ ] Any resolved backlog cards deleted or moved to `graveyard/`
+- [ ] Affected `docs/topics/<topic>/README.md` pages updated to match `main`
+- [ ] Resolved GitHub issues closed with a reference to the merged PR
 - [ ] Open cycle packets on `main`: zero (stop if nonzero)
