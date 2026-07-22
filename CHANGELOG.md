@@ -10,8 +10,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- G3 design draft for live `/.warp/` diagnostics and monotonic operation
-  counters.
+- G3 passed: `/.warp/stats` and `/.warp/runtime` are live for both the
+  in-memory and echo-rlib runtimes. `MountStats` counts every FUSE callback
+  the adapter handles (constant-width JSON, `FOPEN_DIRECT_IO` and a zero
+  attribute TTL on the stats inode so counters are genuinely live, not just
+  correctly-sized), and `runtime_observe_count`/`runtime_observe_error_count`
+  come from real accounting the Echo backend reports, not a downstream
+  constant.
+- G3 acceptance passed 44 / 44 (in-memory) and 74 / 74 (echo-rlib)
+  assertions, with every prior gate's own historical CLI command
+  (bare G1, G2a default, G2b) reconfirmed still passing unmodified.
 - G2b passed and merged: `/echo/head.json` proves the first Echo-projected
   normal regular-file bytes through
   `ObservationProjection::Query -> ObservationPayload::QueryBytes`.
@@ -26,9 +34,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   container.
 - G2a passed: Echo coordinate metadata is surfaced through a real FUSE mount
   via the local Echo rlib path.
-- G3 is the next gate: trustworthy `.warp/` diagnostics and live operation
-  counters, especially `/.warp/stats`, so future projection/write bugs are
-  observable instead of guessed.
 
 ### Changed
 

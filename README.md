@@ -21,7 +21,10 @@ mount -t warpdrive @agent-1:/repo /Users/me/agent-lane
 
 **Alpha in progress.** The design lives in
 [`docs/TECHNICAL_DEEP_DIVE.md`](docs/TECHNICAL_DEEP_DIVE.md); implementation
-is underway through gated milestones (currently G3, diagnostics).
+is underway through gated milestones. G1 (POSIX read path), G2a/G2b (Echo
+coordinate metadata and the first Echo-projected file), and G3 (live
+`.warp/` diagnostics and operation counters) have all passed — see
+[`docs/gates/`](docs/gates/) for their proof transcripts.
 `warp-drive-core` and `warp-drive-fuse` are active workspace crates. The
 Echo-backend crates (`warp-drive-echo-backend`, `warp-drive-fuse-echo`,
 `warp-drive-g0-spike`) exist in-tree but are excluded from the default
