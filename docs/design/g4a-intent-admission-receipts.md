@@ -204,26 +204,74 @@ parallel cleanup.
 - [#10](https://github.com/flyingrobots/warp-drive/issues/10) as the
   refusal-perimeter reference this gate's scope table above is drawn from.
 
-## Open questions
+## Resolved decisions
 
-1. **Basis token representation.** Opaque string (e.g. a hash) vs. a
-   structured value with separate worldline/frontier/tick fields. Should
-   probably mirror whatever shape `/.warp/coordinate` already uses for
-   consistency, but that needs to be checked against what a file-handle-
-   scoped "captured basis" actually needs to compare cheaply on every
-   `fsync()`.
-2. **The gate-only frontier-advance control seam.** Needs a concrete shape:
-   a CLI flag, an internal test hook, or a second synthetic `.warp/` control
-   file. Must be clearly fenced as test/gate-only and not reachable from a
-   normal writable mount's public surface.
-3. **Intent identifier generation.** Monotonic counter vs. random/hash-based
-   ID. Affects whether `intent_id` values are comparable/orderable, which
-   matters if a future gate adds a receipt log.
-4. **Where staged-write bytes live between `write()` and `fsync()`.**
-   Per-file-handle buffer scoped to the open, presumably — needs to fit
-   inside whatever typed tree/synthetic-node boundary #6 introduces rather
-   than becoming its own ad hoc side-structure.
+These resolve the open questions this doc originally posed. This section is
+authoritative; RED tests are written against it directly, and an
+implementation plan living elsewhere must not contradict it.
 
-These should resolve into a "Resolved decisions" section (following the G3
-design doc's precedent) before or during implementation, and that section
-becomes authoritative over any implementation plan living elsewhere.
+1. **Basis token representation: `Basis(u64)`, a monotonic tick counter.**
+   Not a hash, not a structured worldline/frontier/state_root triple —
+   this is the in-memory runtime only, and there is no real cryptographic
+   coordinate to hash yet. Fabricating one would be exactly the kind of
+   "approximate lie" the engineering standard warns against. Matches this
+   project's existing convention of plain integers for counters
+   (`MountStats`) rather than invented hex. G4b (Echo-backed) will need its
+   own mapping from Echo's real coordinate fields to whatever comparison
+   the membrane needs — G4a does not need to solve that generalization.
+2. **The gate-only frontier-advance control seam: an in-process mount, not
+   a subprocess, not a synthetic control file.** Resolves the open question
+   `docs/TESTING.md` originally posed ("should `MountGuard` use a thread or
+   a subprocess?"). G4a's write-path integration tests mount via
+   `fuser::spawn_mount2` (non-blocking, runs the FUSE loop on a background
+   thread in the *same process* as the test) instead of spawning the
+   compiled binary as a child process. The test holds a `BasisControl`
+   handle `Arc`-shared with the mounted `FuseAdapter` and advances it by
+   calling a plain Rust method directly — never through a `.warp/` file,
+   CLI flag, or FUSE method of any kind, so there is no path by which a
+   real POSIX client could ever reach it. The existing subprocess-based
+   `MountGuard` (`crates/warp-drive-fuse/tests/support/mod.rs`, merged
+   ahead of G4a) is unaffected and stays in use for black-box smoke tests
+   that don't need this control — the two harnesses serve different needs,
+   this doesn't replace that one.
+3. **Intent identifier generation: `IntentId(u64)`, a monotonic
+   `AtomicU64` counter per adapter instance.** Same style as `MountStats`'s
+   existing counters. Comparable and orderable, which is all a future
+   receipt-log gate would need — no reason to reach for anything
+   randomized or hash-based for this gate.
+4. **Staged-write storage: a per-file-handle `WriteSession` behind a
+   `Mutex`, owned by `FuseAdapter`, not the fixture tree.** `write()` stages
+   bytes into `WriteSession { basis: Basis, buffer: Vec<u8> }` keyed by
+   `FileHandle`; `fsync()` looks the session up, decides admission via a
+   pure `admit()` function, and on admission writes the buffer into the
+   tree; `release()` removes the entry. This intentionally does **not**
+   wait for the full #6 typed-tree-definition boundary first: G4a's actual
+   footprint on the tree is one new synthetic file
+   (`/.warp/intents/last`, alongside the existing `/.warp/stats` and
+   `/.warp/runtime` pattern established at G3) plus one existing file
+   becoming genuinely writable. That's declaring two things explicitly,
+   not another ad hoc mutation pile — #6's full general typed-builder
+   redesign stays deferred until a gate that actually needs more than this.
+
+## RED
+
+Failing tests written against the decisions above, before any
+implementation:
+
+- `crates/warp-drive-core/src/lib.rs`: unit tests for a pure `admit()`
+  function exercising both paths — fresh-basis submission is `Admitted`,
+  stale-basis submission is `Obstructed` with `ObstructionCode::StaleBasis`
+  and the correct attempted/current basis values. `Basis`, `IntentId`,
+  `Receipt`, `Obstruction`, `ObstructionCode`, and `admit` do not exist yet
+  at RED — this is expected to fail to compile.
+- `crates/warp-drive-fuse/tests/g4a_write_path.rs`: an in-process-mount
+  integration test (per decision 2 above) exercising both paths end-to-end
+  through real FUSE `write`/`fsync` calls against `README.md`, reading
+  `/.warp/intents/last` afterward and checking its JSON shape matches
+  this doc's "Admitted shape"/"Obstructed shape" sections. Fails to
+  compile at RED — the mount function it calls
+  (`warp_drive_fuse::testing::spawn_with_basis_control`) does not exist
+  yet, and neither does write support in `FuseAdapter`.
+
+GREEN is: make both compile, then make both pass, in that order — without
+weakening either test to get there.
