@@ -59,7 +59,7 @@ echo ""
 echo "Mounting at $MOUNT (in-memory backend, G3 gate) ..."
 
 mkdir -p "$MOUNT"
-warp-drive-fuse --runtime=in-memory --gate=g3 --mount "$MOUNT" &
+warp-drive-fuse --gate=g3 --mount "$MOUNT" &
 FUSE_PID=$!
 
 MOUNTED=0
