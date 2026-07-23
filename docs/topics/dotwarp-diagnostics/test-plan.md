@@ -22,6 +22,7 @@ this file; do not renumber on edit, append instead.
 | DIAG-12 | `.warp/coordinate`, `.warp/runtime`, `.warp/stats` agree on `"gate"` for the active mount; `/echo/head.json`'s own `"gate"` is untouched payload provenance | Acceptance script: explicit four-way assertion in `acceptance-g3-echo.sh` | Acceptance script | Implemented |
 | DIAG-13 | `runtime_observe_count`/`_error_count` reflect only mount-startup observations, no live post-mount refresh | — | — | Gap. No live refresh exists; nothing to test yet. Tracked informally in `docs/method/backlog/cool-ideas/` (historical location — new tracking should be a GitHub issue). |
 | DIAG-14 | `/.warp/stats` reads within one `open()` are mutually coherent (per-open snapshot, not per-read) | — | — | Gap, by design (see README "Known gaps"). Not required by any current gate. |
+| DIAG-15 | A guessed `WARP_STATS_INO` value only yields live content if the fixture tree actually backs it with a `RegularFile` node — the "right inode, wrong kind" branch specifically | Unit test | `crates/warp-drive-fuse/src/adapter.rs::is_live_stats_requires_both_stats_ino_and_regular_file_kind` | Implemented (2026-07-22, closed issue #19 — previously untested; see [`fuse-method-surface`](../fuse-method-surface/README.md) FUSEM-03 for the full picture) |
 
 ## Coverage note
 
@@ -30,4 +31,6 @@ tests the G3 gate itself uses — this test plan doesn't introduce new
 executable evidence, it indexes evidence that already exists so a reader
 doesn't have to reconstruct the mapping from the gate record or the source
 tree by hand. DIAG-13/14 are honestly marked as gaps rather than silently
-omitted.
+omitted. DIAG-15 was added alongside the 2026-07-22 backlog crunch (see
+the new [`fuse-method-surface`](../fuse-method-surface/README.md) topic
+for the broader FUSE-method context this one detail sits inside).
