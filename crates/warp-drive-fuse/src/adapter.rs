@@ -69,10 +69,19 @@ impl FuseAdapter {
         if ino != WARP_STATS_INO {
             return None;
         }
-        self.tree
-            .get(ino)
-            .filter(|node| node.kind == NodeKind::RegularFile)
+        let node = self.tree.get(ino)?;
+        is_live_stats(ino, Some(node.kind)).then_some(node)
     }
+}
+
+/// Pure decision: does `(ino, kind)` identify the live stats inode?
+///
+/// Split out from `live_stats_node` so the inode/kind decision itself is
+/// directly unit-testable, including the "right inode number, wrong node
+/// kind" branch, without needing a `FixtureTree`/`FuseAdapter` to exercise
+/// it — the same narrowing already applied to `open_reply_flags`.
+const fn is_live_stats(ino: Ino, kind: Option<NodeKind>) -> bool {
+    ino.0 == WARP_STATS_INO.0 && matches!(kind, Some(NodeKind::RegularFile))
 }
 
 /// Map a domain [`NodeKind`] to a fuser [`FileType`].
@@ -334,8 +343,10 @@ impl fuser::Filesystem for FuseAdapter {
 
 #[cfg(test)]
 mod tests {
-    use super::{open_reply_flags, slice_bytes};
+    use super::{FuseAdapter, is_live_stats, open_reply_flags, slice_bytes};
+    use crate::stats::{GateLabel, MountStats, RuntimeLabel};
     use fuser::FopenFlags;
+    use warp_drive_core::{FixtureTree, Ino, NodeKind, WARP_STATS_INO};
 
     #[test]
     fn open_reply_flags_grants_direct_io_only_for_live_stats() {
@@ -351,5 +362,36 @@ mod tests {
         assert_eq!(slice_bytes(bytes, 20, 5), b"");
         assert_eq!(slice_bytes(bytes, 3, 0), b"");
         assert_eq!(slice_bytes(bytes, 0, u32::MAX), bytes);
+    }
+
+    #[test]
+    fn is_live_stats_requires_both_stats_ino_and_regular_file_kind() {
+        assert!(is_live_stats(WARP_STATS_INO, Some(NodeKind::RegularFile)));
+        assert!(!is_live_stats(WARP_STATS_INO, Some(NodeKind::Directory)));
+        assert!(!is_live_stats(WARP_STATS_INO, Some(NodeKind::Symlink)));
+        assert!(!is_live_stats(WARP_STATS_INO, None));
+        assert!(!is_live_stats(Ino(2), Some(NodeKind::RegularFile)));
+    }
+
+    fn test_adapter() -> FuseAdapter {
+        FuseAdapter::new(
+            FixtureTree::new(),
+            MountStats::new(GateLabel::G1, RuntimeLabel::InMemory, 0, 0),
+        )
+    }
+
+    #[test]
+    fn live_stats_node_is_none_for_any_ino_other_than_warp_stats_ino() {
+        let adapter = test_adapter();
+        assert!(adapter.live_stats_node(Ino(2)).is_none());
+        assert!(adapter.live_stats_node(Ino(999)).is_none());
+    }
+
+    #[test]
+    fn live_stats_node_is_some_for_warp_stats_ino_in_the_real_fixture() {
+        let adapter = test_adapter();
+        let node = adapter.live_stats_node(WARP_STATS_INO);
+        assert!(node.is_some());
+        assert_eq!(node.map(|n| n.kind), Some(NodeKind::RegularFile));
     }
 }
