@@ -30,14 +30,6 @@ use warp_drive_fuse::{GateLabel, MountStats, RuntimeLabel};
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
 
-/// Supported runtime back-ends for the WARP DRIVE mount.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-enum Runtime {
-    /// Hardcoded in-memory fixture tree — no persistence. G1 gate target.
-    #[value(name = "in-memory")]
-    InMemory,
-}
-
 /// Gates this binary can serve.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 enum Gate {
@@ -51,18 +43,14 @@ enum Gate {
 
 /// WARP DRIVE FUSE mount.
 ///
-/// Mounts a read-only POSIX filesystem backed by the selected runtime.
-/// Unmount with `cargo xtask unmount --path <dir>` (or `umount` / `fusermount -u`).
+/// Mounts a read-only in-memory POSIX filesystem. Unmount with
+/// `cargo xtask unmount --path <dir>` (or `umount` / `fusermount -u`).
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
 struct Cli {
     /// Existing directory to use as the mount point.
     #[arg(long)]
     mount: PathBuf,
-
-    /// Runtime back-end.
-    #[arg(long, value_enum, default_value = "in-memory")]
-    runtime: Runtime,
 
     /// Gate to serve.
     #[arg(long, value_enum, default_value = "g1")]
@@ -77,7 +65,6 @@ fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
     tracing::info!(
         mount = %cli.mount.display(),
-        runtime = ?cli.runtime,
         gate = ?cli.gate,
         "WARP DRIVE mounting"
     );

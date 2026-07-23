@@ -57,42 +57,73 @@ and code comments:
 
 ## 2. Zero-warning policy
 
-Warnings are failures. All of them. Add to `Cargo.toml` workspace manifest:
+Warnings are failures — for the lints actually enforced below. The policy is
+tiered: a required, workspace-deny tier that CI blocks on, and an
+experimental tier that individual contributors MAY run by hand but that
+MUST NOT be added to the workspace manifest as a blanket deny.
+
+**Required (workspace-deny in `Cargo.toml`, CI-enforced):**
 
 ```toml
 [workspace.lints.rust]
-warnings          = "deny"
-missing_docs      = "deny"
-unsafe_code       = "forbid"
-unused_must_use   = "deny"
-unreachable_pub   = "deny"
-rust_2018_idioms  = "deny"
+warnings        = "deny"
+missing_docs    = "deny"
+unsafe_code     = "forbid"
+unused_must_use = "deny"
+unreachable_pub = "deny"
 
 [workspace.lints.clippy]
-all               = "deny"
-pedantic          = "deny"
-nursery           = "deny"
-cargo             = "deny"
-unwrap_used       = "deny"
-expect_used       = "deny"
-panic             = "deny"
-todo              = "deny"
-unimplemented     = "deny"
-dbg_macro         = "deny"
-print_stdout      = "deny"
-print_stderr      = "deny"
-wildcard_imports  = "deny"
-enum_glob_use     = "deny"
+all              = { level = "deny", priority = -1 }
+unwrap_used      = "deny"
+expect_used      = "deny"
+panic            = "deny"
+todo             = "deny"
+unimplemented    = "deny"
+dbg_macro        = "deny"
+print_stdout     = "deny"
+print_stderr     = "deny"
+wildcard_imports = "deny"
+enum_glob_use    = "deny"
 ```
 
-Any exception MUST be local, narrow, and commented:
+`clippy::all` covers correctness, suspicious, style, complexity, and perf —
+that plus the named safety/hygiene lints above is the actual, current
+enforced floor. Verify this list against the real `[workspace.lints]` tables
+in the root `Cargo.toml` before trusting it; that file is the source of
+truth and this doc is a description of it, not the other way around.
+
+**Experimental (run manually, e.g. `cargo clippy -- -W clippy::pedantic`;
+never added to the workspace manifest as a deny):**
+
+- `clippy::pedantic`
+- `clippy::nursery`
+- `clippy::cargo`
+
+These groups generate more noise than signal at this project's current
+size, and `pedantic` and `nursery` actively conflict with each other in
+places (e.g. `redundant_pub_crate` vs. this project's own required
+`unreachable_pub`). Denying them at the workspace level in the past
+produced churn — module flattening, cargo-cult `const fn` conversions,
+renames driven by a nursery lint — that fought this document's own prime
+directive (`correctness > portability > observability > performance >
+cleverness`) rather than serving it. They remain available for a
+contributor to run locally and consider case by case; they are not part of
+the enforced bar.
+
+Any exception to the required tier MUST be local, narrow, and commented:
 
 ```rust
 #[allow(clippy::module_name_repetitions)]
 // Reason: public API name intentionally repeats crate prefix for rustdoc clarity.
 ```
 
-No crate-level lint amnesty. No "just for now."
+Workspace-level exceptions to the required tier follow the same rule and
+must be commented in `Cargo.toml` itself — see `multiple_crate_versions =
+"allow"` there for a live example (transitive dependency duplication this
+project doesn't control; `cargo deny` is the right tool for supply-chain
+version auditing, not this lint).
+
+No crate-level lint amnesty on the required tier. No "just for now."
 
 ---
 

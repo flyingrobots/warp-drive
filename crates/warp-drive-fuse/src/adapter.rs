@@ -23,7 +23,8 @@ use std::time::{Duration, SystemTime};
 
 use fuser::{
     Errno, FileAttr, FileHandle, FileType, FopenFlags, Generation, INodeNo, LockOwner, OpenAccMode,
-    OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry, ReplyOpen, Request,
+    OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen,
+    ReplyStatfs, Request,
 };
 use warp_drive_core::{FixtureTree, Ino, NodeContent, NodeKind, VirtualNode, WARP_STATS_INO};
 
@@ -69,10 +70,19 @@ impl FuseAdapter {
         if ino != WARP_STATS_INO {
             return None;
         }
-        self.tree
-            .get(ino)
-            .filter(|node| node.kind == NodeKind::RegularFile)
+        let node = self.tree.get(ino)?;
+        is_live_stats(ino, Some(node.kind)).then_some(node)
     }
+}
+
+/// Pure decision: does `(ino, kind)` identify the live stats inode?
+///
+/// Split out from `live_stats_node` so the inode/kind decision itself is
+/// directly unit-testable, including the "right inode number, wrong node
+/// kind" branch, without needing a `FixtureTree`/`FuseAdapter` to exercise
+/// it — the same narrowing already applied to `open_reply_flags`.
+const fn is_live_stats(ino: Ino, kind: Option<NodeKind>) -> bool {
+    ino.0 == WARP_STATS_INO.0 && matches!(kind, Some(NodeKind::RegularFile))
 }
 
 /// Map a domain [`NodeKind`] to a fuser [`FileType`].
@@ -330,12 +340,76 @@ impl fuser::Filesystem for FuseAdapter {
 
         reply.ok();
     }
+
+    /// Release an open regular file.
+    ///
+    /// Explicit, documented override of `fuser`'s default (which also
+    /// replies `ok()`, silently) — this mount is fully stateless: `open()`
+    /// always hands out `FileHandle(0)` and never allocates per-handle
+    /// state, so there is genuinely nothing to release yet. A future write
+    /// path (G4a) will need real per-handle cleanup here instead of a bare
+    /// acknowledgement — see `docs/design/g4a-intent-admission-receipts.md`.
+    fn release(
+        &self,
+        _req: &Request,
+        _ino: INodeNo,
+        _fh: FileHandle,
+        _flags: OpenFlags,
+        _lock_owner: Option<LockOwner>,
+        _flush: bool,
+        reply: ReplyEmpty,
+    ) {
+        reply.ok();
+    }
+
+    /// Open a directory.
+    ///
+    /// Explicit, documented override of `fuser`'s default (which also hands
+    /// out a stateless handle, silently) — mirrors `open()`'s existing
+    /// pattern deliberately: neither validates the inode's existence or
+    /// kind here, because the kernel only calls `opendir()` against an
+    /// inode it already resolved through a prior `lookup()`, and
+    /// `readdir()` already returns `ENOENT`/`ENOTDIR` for a bad inode.
+    fn opendir(&self, _req: &Request, _ino: INodeNo, _flags: OpenFlags, reply: ReplyOpen) {
+        reply.opened(FileHandle(0), FopenFlags::empty());
+    }
+
+    /// Release an open directory.
+    ///
+    /// Same rationale as `release()`: this mount is stateless, so there is
+    /// nothing to release yet.
+    fn releasedir(
+        &self,
+        _req: &Request,
+        _ino: INodeNo,
+        _fh: FileHandle,
+        _flags: OpenFlags,
+        reply: ReplyEmpty,
+    ) {
+        reply.ok();
+    }
+
+    /// Get file system statistics.
+    ///
+    /// Explicit override of `fuser`'s default, which fabricates an
+    /// all-zero response regardless of what's actually mounted — the
+    /// engineering standard prefers an explicit unsupported operation over
+    /// an approximate lie, and reporting zero inodes for a tree that
+    /// demonstrably has some is exactly that kind of lie. Reports the real
+    /// node count for `files`; `blocks`/`bfree`/`bavail` are genuinely `0`
+    /// because this mount has no write path yet, so there truthfully is no
+    /// free space to report.
+    fn statfs(&self, _req: &Request, _ino: INodeNo, reply: ReplyStatfs) {
+        reply.statfs(0, 0, 0, self.tree.node_count(), 0, 4096, 255, 0);
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{open_reply_flags, slice_bytes};
+    use super::{FuseAdapter, is_live_stats, open_reply_flags, slice_bytes};
+    use crate::stats::{GateLabel, MountStats, RuntimeLabel};
     use fuser::FopenFlags;
+    use warp_drive_core::{FixtureTree, Ino, NodeKind, WARP_STATS_INO};
 
     #[test]
     fn open_reply_flags_grants_direct_io_only_for_live_stats() {
@@ -351,5 +425,36 @@ mod tests {
         assert_eq!(slice_bytes(bytes, 20, 5), b"");
         assert_eq!(slice_bytes(bytes, 3, 0), b"");
         assert_eq!(slice_bytes(bytes, 0, u32::MAX), bytes);
+    }
+
+    #[test]
+    fn is_live_stats_requires_both_stats_ino_and_regular_file_kind() {
+        assert!(is_live_stats(WARP_STATS_INO, Some(NodeKind::RegularFile)));
+        assert!(!is_live_stats(WARP_STATS_INO, Some(NodeKind::Directory)));
+        assert!(!is_live_stats(WARP_STATS_INO, Some(NodeKind::Symlink)));
+        assert!(!is_live_stats(WARP_STATS_INO, None));
+        assert!(!is_live_stats(Ino(2), Some(NodeKind::RegularFile)));
+    }
+
+    fn test_adapter() -> FuseAdapter {
+        FuseAdapter::new(
+            FixtureTree::new(),
+            MountStats::new(GateLabel::G1, RuntimeLabel::InMemory, 0, 0),
+        )
+    }
+
+    #[test]
+    fn live_stats_node_is_none_for_any_ino_other_than_warp_stats_ino() {
+        let adapter = test_adapter();
+        assert!(adapter.live_stats_node(Ino(2)).is_none());
+        assert!(adapter.live_stats_node(Ino(999)).is_none());
+    }
+
+    #[test]
+    fn live_stats_node_is_some_for_warp_stats_ino_in_the_real_fixture() {
+        let adapter = test_adapter();
+        let node = adapter.live_stats_node(WARP_STATS_INO);
+        assert!(node.is_some());
+        assert_eq!(node.map(|n| n.kind), Some(NodeKind::RegularFile));
     }
 }

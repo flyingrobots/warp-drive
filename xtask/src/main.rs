@@ -234,8 +234,6 @@ fn mount(path: &Path, runtime: Runtime, gate: Option<Gate>) -> Result<(), String
                 "--package",
                 "warp-drive-fuse",
                 "--",
-                "--runtime",
-                "in-memory",
                 "--gate",
                 resolved_gate.as_str(),
                 "--mount",
