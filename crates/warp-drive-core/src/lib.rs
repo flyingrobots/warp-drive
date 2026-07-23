@@ -721,3 +721,48 @@ mod tests {
         assert!(!debug.contains("Ino(19)"));
     }
 }
+
+/// G4a RED: `admit()` and its supporting types do not exist yet.
+///
+/// This module intentionally fails to compile until GREEN implements
+/// `Basis`, `IntentId`, `Receipt`, `Obstruction`, `ObstructionCode`, and
+/// `admit` per `docs/design/g4a-intent-admission-receipts.md`'s "Resolved
+/// decisions" section. Do not weaken these assertions to make them pass —
+/// fix the implementation instead.
+#[cfg(test)]
+mod g4a_admission_tests {
+    use super::{Basis, IntentId, Obstruction, ObstructionCode, Receipt, admit};
+
+    #[test]
+    fn fresh_basis_submission_is_admitted() {
+        let current = Basis(3);
+        let receipt = admit(IntentId(1), current, current);
+
+        assert_eq!(
+            receipt,
+            Receipt::Admitted {
+                intent_id: IntentId(1),
+                admitted_frontier: current,
+            }
+        );
+    }
+
+    #[test]
+    fn stale_basis_submission_is_obstructed_with_both_basis_values() {
+        let submitted = Basis(3);
+        let current = Basis(4);
+        let receipt = admit(IntentId(2), submitted, current);
+
+        assert_eq!(
+            receipt,
+            Receipt::Obstructed {
+                intent_id: IntentId(2),
+                obstruction: Obstruction {
+                    code: ObstructionCode::StaleBasis,
+                    attempted_basis: submitted,
+                    current_basis: current,
+                },
+            }
+        );
+    }
+}
