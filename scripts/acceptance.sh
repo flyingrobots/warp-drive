@@ -60,7 +60,7 @@ echo ""
 echo "Mounting at $MOUNT …"
 
 mkdir -p "$MOUNT"
-warp-drive-fuse --runtime=in-memory --mount "$MOUNT" &
+warp-drive-fuse --mount "$MOUNT" &
 FUSE_PID=$!
 
 # Wait up to 5 s for the FUSE mount to appear.
