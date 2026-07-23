@@ -23,7 +23,8 @@ use std::time::{Duration, SystemTime};
 
 use fuser::{
     Errno, FileAttr, FileHandle, FileType, FopenFlags, Generation, INodeNo, LockOwner, OpenAccMode,
-    OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry, ReplyOpen, Request,
+    OpenFlags, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen,
+    ReplyStatfs, Request,
 };
 use warp_drive_core::{FixtureTree, Ino, NodeContent, NodeKind, VirtualNode, WARP_STATS_INO};
 
@@ -338,6 +339,68 @@ impl fuser::Filesystem for FuseAdapter {
         }
 
         reply.ok();
+    }
+
+    /// Release an open regular file.
+    ///
+    /// Explicit, documented override of `fuser`'s default (which also
+    /// replies `ok()`, silently) — this mount is fully stateless: `open()`
+    /// always hands out `FileHandle(0)` and never allocates per-handle
+    /// state, so there is genuinely nothing to release yet. A future write
+    /// path (G4a) will need real per-handle cleanup here instead of a bare
+    /// acknowledgement — see `docs/design/g4a-intent-admission-receipts.md`.
+    fn release(
+        &self,
+        _req: &Request,
+        _ino: INodeNo,
+        _fh: FileHandle,
+        _flags: OpenFlags,
+        _lock_owner: Option<LockOwner>,
+        _flush: bool,
+        reply: ReplyEmpty,
+    ) {
+        reply.ok();
+    }
+
+    /// Open a directory.
+    ///
+    /// Explicit, documented override of `fuser`'s default (which also hands
+    /// out a stateless handle, silently) — mirrors `open()`'s existing
+    /// pattern deliberately: neither validates the inode's existence or
+    /// kind here, because the kernel only calls `opendir()` against an
+    /// inode it already resolved through a prior `lookup()`, and
+    /// `readdir()` already returns `ENOENT`/`ENOTDIR` for a bad inode.
+    fn opendir(&self, _req: &Request, _ino: INodeNo, _flags: OpenFlags, reply: ReplyOpen) {
+        reply.opened(FileHandle(0), FopenFlags::empty());
+    }
+
+    /// Release an open directory.
+    ///
+    /// Same rationale as `release()`: this mount is stateless, so there is
+    /// nothing to release yet.
+    fn releasedir(
+        &self,
+        _req: &Request,
+        _ino: INodeNo,
+        _fh: FileHandle,
+        _flags: OpenFlags,
+        reply: ReplyEmpty,
+    ) {
+        reply.ok();
+    }
+
+    /// Get file system statistics.
+    ///
+    /// Explicit override of `fuser`'s default, which fabricates an
+    /// all-zero response regardless of what's actually mounted — the
+    /// engineering standard prefers an explicit unsupported operation over
+    /// an approximate lie, and reporting zero inodes for a tree that
+    /// demonstrably has some is exactly that kind of lie. Reports the real
+    /// node count for `files`; `blocks`/`bfree`/`bavail` are genuinely `0`
+    /// because this mount has no write path yet, so there truthfully is no
+    /// free space to report.
+    fn statfs(&self, _req: &Request, _ino: INodeNo, reply: ReplyStatfs) {
+        reply.statfs(0, 0, 0, self.tree.node_count(), 0, 4096, 255, 0);
     }
 }
 

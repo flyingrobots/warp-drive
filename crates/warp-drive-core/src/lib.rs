@@ -521,6 +521,15 @@ impl FixtureTree {
         self.nodes.get(&ino)
     }
 
+    /// Total number of nodes (files, directories, and symlinks) in the tree.
+    ///
+    /// Used for honest `statfs` reporting — the real inode count of this
+    /// synthetic filesystem, not a fabricated placeholder.
+    #[must_use]
+    pub fn node_count(&self) -> u64 {
+        self.nodes.len() as u64
+    }
+
     /// Return the ordered child entries of a directory node.
     ///
     /// Each entry is `(child_ino, name_bytes)`. Returns `None` if `ino` does
@@ -653,6 +662,23 @@ mod tests {
         let tree = FixtureTree::new();
         let kind = tree.get(WARP_STATS_INO).map(|node| node.kind);
         assert_eq!(kind, Some(NodeKind::RegularFile));
+    }
+
+    #[test]
+    fn node_count_reflects_the_real_g1_fixture_size() {
+        let tree = FixtureTree::new();
+        assert_eq!(tree.node_count(), 13);
+    }
+
+    #[test]
+    fn node_count_grows_with_the_g2b_echo_head_extension() {
+        let tree = FixtureTree::with_warp_metadata_and_echo_head_file(
+            b"coord".to_vec(),
+            b"runtime".to_vec(),
+            b"{}".to_vec(),
+        )
+        .unwrap_or_else(|_| FixtureTree::new());
+        assert_eq!(tree.node_count(), 15);
     }
 
     #[test]
