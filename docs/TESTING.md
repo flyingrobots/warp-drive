@@ -148,6 +148,13 @@ See: [§8](#8-backend-progression).
 
 ## 5. Fixtures library
 
+> **This section is the original G1-era plan, not current reality.** No
+> `warp-drive-fixtures` crate exists. `FixtureTree::new()` still lives in
+> `warp-drive-core` largely as described in issue
+> [#6](https://github.com/flyingrobots/warp-drive/issues/6) (open). The
+> sketch below is kept as historical intent, not a description of what to
+> expect on `main` today.
+
 The fixture infrastructure is two crates with a clean boundary.
 
 ### Crate 1: `warp-drive-fixtures` (pure domain)
@@ -218,6 +225,16 @@ See [§6](#6-integration-test-harness) for the `MountGuard` design.
 ---
 
 ## 6. Integration test harness
+
+> **This section is also the original G1-era plan, not current reality.**
+> A `MountGuard` was built, but it's smaller and shaped differently than
+> the sketch below — subprocess-based (spawns the real compiled binary
+> rather than constructing a `FixtureTree` in-process), no `TempDir`
+> dependency, no `assert_*` helper functions, no separate
+> `warp-drive-test-harness` crate. See
+> [`docs/topics/fuse-integration-test-harness/README.md`](topics/fuse-integration-test-harness/README.md)
+> for the current, real contract — including *why* it diverges from the
+> plan below, which is kept only as historical intent.
 
 ### `MountGuard`
 
