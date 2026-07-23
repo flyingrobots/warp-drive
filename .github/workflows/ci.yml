@@ -28,7 +28,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.90.0"
-      - run: cargo test --workspace -- --nocapture
+      - run: cargo test --workspace -- --show-output
+        env:
+          # This runner has been confirmed (2026-07-23) to mount FUSE for
+          # real via crates/warp-drive-fuse/tests/mount_smoke.rs. Requiring
+          # it here means a future regression (missing fusermount3, broken
+          # binary, permission change) fails the build instead of quietly
+          # degrading to a skip that still shows green.
+          WARP_DRIVE_REQUIRE_FUSE: "1"
 
   lint:
     name: Clippy + fmt
